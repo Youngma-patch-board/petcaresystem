@@ -1,0 +1,2766 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🐾 펫케어 대시보드</title>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+      background: #f0f2f5; color: #1a1a2e; overflow-x: hidden;
+    }
+    .dashboard {
+      display: grid;
+      grid-template-columns: 260px 1fr 300px;
+      grid-template-rows: auto 1fr auto auto;
+      gap: 12px; padding: 12px;
+      min-height: 100vh; max-width: 1600px; margin: 0 auto;
+    }
+    .panel {
+      background: #fff; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+      padding: 16px; position: relative; display: flex; flex-direction: column;
+    }
+    .panel-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 12px; padding-bottom: 8px;
+      border-bottom: 2px solid #f0f2f5;
+    }
+    .panel-title {
+      font-size: 14px; font-weight: 700; color: #6c5ce7; letter-spacing: -0.3px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .btn-expand, .btn-collapse {
+      background: none; border: none; cursor: pointer; font-size: 16px;
+      color: #b2bec3; padding: 4px 8px; border-radius: 8px; transition: 0.2s;
+    }
+    .btn-expand:hover, .btn-collapse:hover { background: #f0f2f5; color: #6c5ce7; }
+    .panel.expanded {
+      position: fixed; z-index: 1000; top: 20px; left: 20px; right: 20px; bottom: 20px;
+      width: auto !important; height: auto !important;
+      overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); border-radius: 20px;
+    }
+    .panel.expanded + .panel-overlay { display: block; }
+    .panel-overlay {
+      display: none; position: fixed; inset: 0; z-index: 999;
+      background: rgba(0,0,0,0.4); backdrop-filter: blur(4px);
+    }
+    .animal-selector { grid-column: 1; grid-row: 1; }
+    .animal-list { display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto; }
+    .animal-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px; border-radius: 12px; cursor: pointer;
+      transition: all 0.2s; border: 2px solid transparent;
+      font-weight: 600; font-size: 15px;
+    }
+    .animal-item:hover { background: #f8f9ff; }
+    .animal-item.active { border-color: #6c5ce7; background: #f0edff; }
+    .animal-item .animal-name { flex: 1; }
+    .animal-item .species-tag {
+      font-size: 11px; padding: 2px 8px; border-radius: 20px;
+      background: #e8e8f0; color: #666; font-weight: 400;
+    }
+    .animal-item .btn-delete {
+      background: none; border: none; cursor: pointer; font-size: 14px;
+      color: #d0d0e0; padding: 2px 6px; border-radius: 6px; transition: 0.2s; line-height: 1;
+    }
+    .animal-item .btn-delete:hover { color: #e74c3c; background: #fff0f0; }
+    .btn-add-animal {
+      padding: 10px 14px; border-radius: 12px; border: 2px dashed #d0d0e0;
+      background: none; cursor: pointer; font-size: 20px; color: #6c5ce7;
+      transition: 0.2s; margin-top: 4px;
+    }
+    .btn-add-animal:hover { background: #f0edff; border-color: #6c5ce7; }
+    .community-panel { grid-column: 1; grid-row: 2; }
+    .community-preview { font-size: 13px; color: #666; line-height: 1.6; padding: 8px 0; }
+    .community-preview .post-item {
+      padding: 8px 0; border-bottom: 1px solid #f0f2f5; cursor: pointer;
+    }
+    .community-preview .post-item:hover { color: #6c5ce7; }
+    .cam-panel { grid-column: 1; grid-row: 3; min-height: 200px; }
+    .cam-view {
+      width: 100%; height: 180px; background: #1a1a2e; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 14px; position: relative; overflow: hidden;
+    }
+    .cam-view video, .cam-view img { width: 100%; height: 100%; object-fit: cover; }
+    .cam-placeholder { text-align: center; opacity: 0.6; }
+    .cam-placeholder .cam-icon { font-size: 36px; margin-bottom: 8px; }
+    .cam-status {
+      position: absolute; bottom: 8px; left: 8px;
+      padding: 2px 10px; border-radius: 20px; font-size: 11px;
+      background: rgba(0,0,0,0.6); color: #4ade80;
+    }
+    .map-panel { grid-column: 2; grid-row: 1 / span 3; }
+    #map { width: 100%; height: 500px; border-radius: 12px; z-index: 1; }
+    .map-controls { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .map-controls .map-btn {
+      padding: 6px 14px; border: none; border-radius: 10px; font-size: 12px;
+      font-weight: 600; cursor: pointer; transition: 0.2s; background: #f0f2f5; color: #333;
+    }
+    .map-controls .map-btn:hover { background: #e0e0f0; color: #6c5ce7; }
+    .animal-location-list { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+    .animal-loc-item {
+      padding: 4px 12px; border-radius: 20px; font-size: 12px;
+      font-weight: 600; cursor: pointer; border: 2px solid #e0e0f0;
+      background: #fff; transition: 0.2s;
+    }
+    .animal-loc-item:hover { border-color: #6c5ce7; background: #f0edff; }
+    /* 지도 검색 + 경로 */
+    .map-search-wrap { display: flex; gap: 6px; margin-top: 8px; align-items: stretch; }
+    .map-search-wrap input {
+      flex: 1; padding: 8px 14px; border: 2px solid #e0e0f0; border-radius: 10px;
+      font-size: 13px; outline: none; transition: 0.15s;
+    }
+    .map-search-wrap input:focus { border-color: #6c5ce7; }
+    .map-search-wrap button {
+      padding: 8px 16px; border: none; border-radius: 10px;
+      background: #6c5ce7; color: #fff; font-weight: 600; font-size: 13px;
+      cursor: pointer; white-space: nowrap; transition: 0.15s;
+    }
+    .map-search-wrap button:hover { background: #5a4bd1; }
+    .map-routes { margin-top: 8px; max-height: 220px; overflow-y: auto; }
+    .map-routes .mr-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-radius: 10px; background: #f8f9ff;
+      margin-bottom: 4px; cursor: pointer; transition: 0.15s;
+      border-left: 4px solid #6c5ce7;
+    }
+    .map-routes .mr-item:hover { background: #f0edff; }
+    .map-routes .mr-item .mr-icon { font-size: 18px; flex-shrink: 0; width: 28px; text-align: center; }
+    .map-routes .mr-item .mr-info { flex: 1; min-width: 0; }
+    .map-routes .mr-item .mr-name { font-weight: 600; font-size: 13px; }
+    .map-routes .mr-item .mr-detail { font-size: 11px; color: #888; margin-top: 1px; }
+    .map-routes .mr-item .mr-dist { font-size: 12px; font-weight: 700; color: #6c5ce7; white-space: nowrap; }
+    .map-routes .mr-modes { display: flex; gap: 4px; margin-top: 6px; padding:0 4px; }
+    .map-routes .mr-modes button {
+      flex: 1; padding: 5px 8px; border: 1px solid #e0e0f0; border-radius: 8px;
+      background: #fff; font-size: 11px; font-weight: 600; cursor: pointer; transition: 0.15s; color: #666;
+    }
+    .map-routes .mr-modes button:hover { border-color: #6c5ce7; color: #6c5ce7; }
+    .map-routes .mr-modes button.active { border-color: #6c5ce7; background: #f0edff; color: #6c5ce7; }
+    .mr-empty { font-size: 13px; color: #b2bec3; text-align: center; padding: 24px 0; }
+    .btn-search {
+      padding: 10px 20px; border: none; border-radius: 12px;
+      background: #6c5ce7; color: #fff; font-weight: 600; cursor: pointer;
+      transition: 0.2s; white-space: nowrap;
+    }
+    .btn-search:hover { background: #5a4bd1; }
+    .right-panel { grid-column: 3; }
+    .info-panel { grid-row: 1; }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .info-item { padding: 8px 12px; border-radius: 10px; background: #f8f9ff; }
+    .info-item .label { font-size: 11px; color: #b2bec3; font-weight: 600; }
+    .info-item .value { font-size: 16px; font-weight: 700; margin-top: 2px; }
+    .btn-edit-info {
+      padding: 4px 10px; border: none; border-radius: 8px; font-size: 11px;
+      background: #f0f2f5; color: #6c5ce7; cursor: pointer; font-weight: 600; transition: 0.2s;
+    }
+    .btn-edit-info:hover { background: #e0d8ff; }
+    .bio-panel { grid-row: 2; }
+    .bio-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .bio-card { padding: 12px; border-radius: 12px; text-align: center; background: #f8f9ff; }
+    .bio-card .bio-icon { font-size: 24px; }
+    .bio-card .bio-value { font-size: 22px; font-weight: 800; margin: 4px 0; }
+    .bio-card .bio-label { font-size: 11px; color: #b2bec3; }
+    .bio-card .bio-sub { font-size: 11px; color: #6c5ce7; font-weight: 600; }
+    .heart-rate { color: #e74c3c; }
+    .temp-rate { color: #f39c12; }
+    .steps-rate { color: #6c5ce7; }
+    /* ===== 순수 JS 캘린더 ===== */
+    .cal-panel { grid-row: 3; overflow: hidden; }
+    .cal-wrap { font-size: 13px; user-select: none; overflow: hidden; }
+    .cal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 4px; margin-bottom: 8px;
+    }
+    .cal-header .cal-title { font-size: 16px; font-weight: 700; color: #1a1a2e; }
+    .cal-header .cal-nav { display: flex; gap: 4px; }
+    .cal-header .cal-nav button {
+      padding: 4px 12px; border: none; border-radius: 8px;
+      background: #f0f2f5; cursor: pointer; font-size: 16px; font-weight: 700;
+      color: #6c5ce7; transition: 0.2s; line-height: 1.4;
+    }
+    .cal-header .cal-nav button:hover { background: #e0d8ff; }
+    .cal-days {
+      display: grid; grid-template-columns: repeat(7, 1fr);
+      text-align: center; margin-bottom: 4px;
+    }
+    .cal-days .cal-weekday { padding: 6px 0; font-size: 11px; font-weight: 700; color: #b2bec3; }
+    .cal-days .cal-weekday:first-child { color: #e74c3c; }
+    .cal-days .cal-weekday:last-child { color: #3498db; }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+    .cal-grid .cal-cell {
+      border-radius: 10px; padding: 3px 4px;
+      display: flex; flex-direction: column; align-items: stretch;
+      justify-content: flex-start; cursor: pointer;
+      transition: 0.15s; position: relative; min-height: 54px; height: auto; overflow: hidden;
+      background: #fafafa;
+    }
+    .cal-grid .cal-cell:hover { background: #f0edff; }
+    .cal-grid .cal-cell.other-month { opacity: 0.3; }
+    .cal-grid .cal-cell.today { background: #f0edff; font-weight: 700; }
+    .cal-grid .cal-cell .cal-day-num { font-size: 11px; font-weight: 700; padding: 1px 0; line-height: 1.2; }
+    .cal-grid .cal-cell .cal-event-row { margin-top: 1px; padding: 1px 0; cursor: pointer; border-radius: 4px; }
+    .cal-grid .cal-cell .cal-event-row:hover { background: rgba(108,92,231,0.08); }
+    .cal-grid .cal-cell .cal-event-title { font-size: 10px; font-weight: 600; line-height: 1.3; display: flex; align-items: center; gap: 3px; overflow: hidden; }
+    .cal-grid .cal-cell .cal-event-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+    .cal-grid .cal-cell .cal-event-meta { font-size: 8px; color: #888; line-height: 1.2; display: flex; gap: 3px; flex-wrap: wrap; padding-left: 8px; }
+    .cal-grid .cal-cell .cal-event-more { font-size: 8px; color: #6c5ce7; font-weight: 600; cursor: pointer; padding: 1px 0; }
+    .cal-legend {
+      display: flex; gap: 12px; margin-top: 8px; padding-top: 8px;
+      border-top: 1px solid #f0f2f5; font-size: 11px; color: #666;
+    }
+    .cal-legend span { display: flex; align-items: center; gap: 4px; }
+    .cal-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+    .cal-walk-check { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f0f2f5; font-size: 12px; }
+    .cal-walk-check .walk-icon { font-size: 16px; }
+    .cal-walk-check .walk-label { color: #333; font-weight: 600; }
+    .cal-walk-check .walk-btns { display: flex; gap: 4px; margin-left: auto; }
+    .cal-walk-check .walk-btns button { padding: 3px 14px; border: 1.5px solid #ddd; border-radius: 20px; background: #fff; font-size: 12px; font-weight: 600; cursor: pointer; color: #666; transition: 0.15s; }
+    .cal-walk-check .walk-btns button.active-yes { border-color: #27ae60; background: #e8f8f0; color: #27ae60; }
+    .cal-walk-check .walk-btns button.active-no { border-color: #e74c3c; background: #fdecea; color: #e74c3c; }
+    .cal-walk-check .walk-streak { margin-left: 4px; font-size: 11px; color: #999; }
+    .cal-grid .cal-cell .cal-walk-icon { font-size: 14px; line-height: 1; text-align: center; margin-top: 2px; }
+    /* ===== 모달 ===== */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 9999;
+      background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: #fff; border-radius: 20px; padding: 24px;
+      width: 90%; max-width: 420px; max-height: 85vh; overflow-y: auto;
+    }
+    .modal h3 { margin-bottom: 16px; color: #6c5ce7; font-size: 18px; }
+    .modal label { display: block; font-size: 12px; font-weight: 600; color: #666; margin-bottom: 4px; margin-top: 4px; }
+    .modal input, .modal select, .modal textarea {
+      width: 100%; padding: 10px 14px; border: 2px solid #e0e0f0;
+      border-radius: 12px; font-size: 14px; margin-bottom: 10px; outline: none;
+    }
+    .modal input:focus, .modal select:focus, .modal textarea:focus { border-color: #6c5ce7; }
+    .modal textarea { resize: vertical; min-height: 60px; }
+    .modal .btn-group { display: flex; gap: 8px; margin-top: 12px; }
+    .modal .btn-group button {
+      flex: 1; padding: 10px; border-radius: 12px; border: none;
+      font-weight: 600; cursor: pointer; font-size: 14px;
+    }
+    .modal .btn-primary { background: #6c5ce7; color: #fff; }
+    .modal .btn-primary:hover { background: #5a4bd1; }
+    .modal .btn-secondary { background: #f0f2f5; color: #666; }
+    .modal .btn-secondary:hover { background: #e0e0e8; }
+    .modal .btn-danger { background: #e74c3c; color: #fff; }
+    .modal .btn-danger:hover { background: #c0392b; }
+    .btn-primary { background: #6c5ce7; color: #fff; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; }
+    .btn-primary:hover { background: #5a4bd1; }
+    .btn-secondary { background: #f0f2f5; color: #666; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; }
+    .btn-secondary:hover { background: #e0e0e8; }
+    .community-full {
+      display: none; position: fixed; inset: 0; z-index: 3000;
+      background: #fff; overflow-y: auto;
+    }
+    .community-full.active { display: block; }
+    .community-full .cf-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 24px; border-bottom: 2px solid #f0f2f5;
+      position: sticky; top: 0; background: #fff; z-index: 10;
+    }
+    .community-full .cf-header h2 { font-size: 20px; color: #6c5ce7; }
+    .community-full .cf-header button {
+      padding: 8px 16px; border: none; border-radius: 10px;
+      background: #f0f2f5; cursor: pointer; font-size: 14px; font-weight: 600;
+    }
+    .community-full .cf-body { padding: 16px 24px; max-width: 800px; margin: 0 auto; }
+    .community-full .cf-post {
+      padding: 12px 14px; border-radius: 12px; background: #f8f9ff; margin-bottom: 8px;
+    }
+    .community-full .cf-write {
+      display: flex; gap: 8px; padding: 16px 0; border-bottom: 2px solid #f0f2f5; margin-bottom: 16px;
+    }
+    .community-full .cf-write input {
+      flex: 1; padding: 10px 16px; border: 2px solid #e0e0f0; border-radius: 12px; font-size: 14px; outline: none;
+    }
+    .community-full .cf-write input:focus { border-color: #6c5ce7; }
+    .cmt-item {
+      display: flex; align-items: flex-start; gap: 6px;
+      padding: 8px 0; border-bottom: 1px solid #f5f5f5;
+    }
+    .cmt-author {
+      font-weight: 600; font-size: 12px; color: #6c5ce7; white-space: nowrap;
+    }
+    .cmt-time { font-size: 11px; color: #b2bec3; white-space: nowrap; }
+    .cmt-content { font-size: 13px; margin-top: 1px; }
+    .cmt-content img { max-width: 100%; max-height: 120px; border-radius: 8px; margin-top: 4px; display: block; }
+    .cmt-delete {
+      background: none; border: none; color: #e74c3c; cursor: pointer;
+      font-size: 12px; padding: 2px 6px; border-radius: 6px;
+    }
+    .cmt-delete:hover { background: #fff0f0; }
+    .cmt-input-wrap {
+      display: flex; flex-direction: column; gap: 6px; margin-top: 8px;
+    }
+    .cmt-input {
+      padding: 8px 12px; border: 1px solid #e0e0f0;
+      border-radius: 8px; font-size: 13px; outline: none; transition: 0.2s;
+    }
+    .cmt-input:focus { border-color: #6c5ce7; }
+    .cmt-btn-row {
+      display: flex; gap: 6px; justify-content: flex-end; align-items: center;
+    }
+    .cmt-img-btn {
+      padding: 8px 14px; border: 2px dashed #d0d0e0; border-radius: 12px;
+      background: none; cursor: pointer; font-size: 12px; color: #666;
+      transition: 0.2s; white-space: nowrap; display: inline-flex;
+      align-items: center; gap: 4px; line-height: 1; flex-shrink: 0;
+    }
+    .cmt-img-btn:hover { border-color: #6c5ce7; color: #6c5ce7; background: #f8f9ff; }
+    .cmt-img-preview {
+      max-width: 60px; max-height: 60px; border-radius: 6px; object-fit: cover;
+      cursor: pointer; border: 2px solid #6c5ce7; flex-shrink: 0;
+    }
+    .cmt-img-preview:hover { opacity: 0.7; }
+
+    /* ===== 계정 설정 — Google 스타일 ===== */
+    .set-card {
+      background: #fff; border: 1px solid #e8eaed; border-radius: 12px;
+      padding: 16px; margin-bottom: 10px; transition: 0.15s;
+    }
+    .set-card:hover { border-color: #dadce0; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+    .set-card .sc-header {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 14px; font-weight: 600; color: #1a1a2e; margin-bottom: 10px;
+    }
+    .set-card .sc-icon { font-size: 20px; width: 28px; text-align: center; flex-shrink: 0; }
+    .set-card .sc-value {
+      font-size: 13px; color: #5f6368; margin-bottom: 8px;
+      padding: 8px 12px; background: #f8f9fa; border-radius: 8px;
+    }
+    .set-card .sc-input {
+      width: 100%; padding: 10px 14px; border: 1px solid #dadce0; border-radius: 8px;
+      font-size: 14px; outline: none; transition: 0.15s; margin-bottom: 6px; box-sizing: border-box;
+    }
+    .set-card .sc-input:focus { border-color: #6c5ce7; border-width: 2px; padding: 9px 13px; }
+    .set-card .sc-input-wrap { margin-top: 4px; }
+    .set-card .sc-btn-row { display: flex; gap: 6px; margin-top: 4px; }
+    .set-card .sc-btn {
+      padding: 8px 18px; border: none; border-radius: 8px; font-size: 13px;
+      font-weight: 600; cursor: pointer; transition: 0.15s; white-space: nowrap;
+    }
+    .set-card .sc-btn-primary { background: #6c5ce7; color: #fff; }
+    .set-card .sc-btn-primary:hover { background: #5a4bd1; }
+    .set-card .sc-btn-secondary { background: #f0f2f5; color: #444; }
+    .set-card .sc-btn-secondary:hover { background: #e2e4e8; }
+    .set-card .sc-btn-danger { background: #e74c3c; color: #fff; }
+    .set-card .sc-btn-danger:hover { background: #c0392b; }
+    .set-card .sc-warn {
+      font-size: 12px; color: #888; margin-top: 6px; line-height: 1.4;
+    }
+    .settings-msg {
+      font-size: 13px; margin-top: 8px; min-height: 20px; text-align: center;
+      padding: 6px 12px; border-radius: 8px;
+    }
+    .settings-msg.success { color: #155724; background: #d4edda; }
+    .settings-msg.error { color: #721c24; background: #f8d7da; }
+
+    /* ===== 프로필 아바타 ===== */
+    .avatar-circle {
+      width: 72px; height: 72px; border-radius: 50%; object-fit: cover;
+      background: #e8e8f0; display: flex; align-items: center; justify-content: center;
+      font-size: 28px; color: #999; flex-shrink: 0; border: 3px solid #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .avatar-circle.small {
+      width: 28px; height: 28px; font-size: 14px; border-width: 0;
+      box-shadow: none; background: #e0d8ff;
+    }
+    .avatar-circle.xsmall {
+      width: 22px; height: 22px; font-size: 11px; border-width: 0;
+      box-shadow: none; background: #e0d8ff;
+    }
+    .set-avatar-wrap {
+      display: flex; flex-direction: column; align-items: center;
+      padding: 20px 0 12px; gap: 10px;
+    }
+    .set-avatar-wrap .set-name {
+      font-size: 18px; font-weight: 700; color: #1a1a2e;
+    }
+    .set-avatar-wrap .set-id {
+      font-size: 14px; color: #5f6368; margin-top: -6px;
+    }
+    .set-avatar-wrap .set-avatar-actions {
+      display: flex; gap: 8px; margin-top: 2px;
+    }
+    .set-avatar-wrap .set-avatar-actions button {
+      padding: 6px 14px; border: 1px solid #dadce0; border-radius: 20px;
+      background: #fff; font-size: 12px; font-weight: 600; cursor: pointer;
+      color: #444; transition: 0.15s;
+    }
+    .set-avatar-wrap .set-avatar-actions button:hover { background: #f8f9fa; border-color: #6c5ce7; color: #6c5ce7; }
+    .set-avatar-wrap .set-avatar-actions button.danger { color: #e74c3c; border-color: #f5c6cb; }
+    .set-avatar-wrap .set-avatar-actions button.danger:hover { background: #fff5f5; border-color: #e74c3c; }
+    .user-badge-avatar {
+      width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+    }
+    .cf-author-avatar {
+      width: 20px; height: 20px; border-radius: 50%; object-fit: cover;
+      vertical-align: middle; margin-right: 4px;
+    }
+    .cmt-author-avatar {
+      width: 18px; height: 18px; border-radius: 50%; object-fit: cover;
+      vertical-align: middle; margin-right: 3px;
+    }
+
+    /* ===== 게시글 상세 모달 ===== */
+    .pd-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      margin-bottom: 16px; gap: 12px;
+    }
+    .pd-header .pd-title-section { flex: 1; min-width: 0; }
+    .pd-header .pd-post-title { font-size: 18px; font-weight: 700; color: #1a1a2e; }
+    .pd-header .pd-meta { font-size: 12px; color: #b2bec3; margin-top: 4px; }
+    .pd-body {
+      font-size: 14px; line-height: 1.7; color: #333; margin-bottom: 16px;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .pd-media { margin-bottom: 16px; }
+    .pd-media img, .pd-media video {
+      max-width: 100%; border-radius: 12px; margin-bottom: 8px;
+      display: block; cursor: pointer;
+    }
+    .pd-actions {
+      display: flex; gap: 16px; padding: 12px 0; border-top: 1px solid #f0f2f5;
+      border-bottom: 1px solid #f0f2f5; margin-bottom: 16px; font-size: 14px;
+    }
+    .pd-actions span { cursor: pointer; user-select: none; }
+    .pd-actions span:hover { color: #6c5ce7; }
+    .pd-comments { margin-top: 12px; }
+
+    /* ===== 미디어 업로드 ===== */
+    .media-upload-btn {
+      padding: 8px 14px; border: 2px dashed #d0d0e0; border-radius: 10px;
+      background: none; cursor: pointer; font-size: 13px; color: #666;
+      transition: 0.2s; white-space: nowrap; display: inline-flex;
+      align-items: center; gap: 4px; line-height: 1;
+    }
+    .media-upload-btn:hover { border-color: #6c5ce7; color: #6c5ce7; background: #f8f9ff; }
+    .media-preview {
+      display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;
+    }
+    .media-preview .mp-item {
+      position: relative; width: 72px; height: 72px; border-radius: 10px;
+      overflow: hidden; border: 1px solid #e0e0f0; flex-shrink: 0;
+    }
+    .media-preview .mp-item img, .media-preview .mp-item video {
+      width: 100%; height: 100%; object-fit: cover;
+    }
+    .media-preview .mp-item .mp-del {
+      position: absolute; top: 2px; right: 2px;
+      background: rgba(0,0,0,0.55); color: #fff; border: none;
+      border-radius: 50%; width: 18px; height: 18px; font-size: 10px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1;
+    }
+
+    /* ===== 커뮤니티 포스트 리스트 (DC Inside 스타일) ===== */
+    .community-full .cf-post { cursor: pointer; }
+    .community-full .cf-post:hover { background: #eef0ff; }
+    .cf-post .cf-thumb-wrap {
+      float: right; margin-left: 10px; margin-bottom: 4px;
+    }
+    .cf-post .cf-thumb {
+      width: 56px; height: 56px; border-radius: 10px; object-fit: cover;
+      display: block; border: 1px solid #e0e0f0;
+    }
+    .cf-post .cf-post-title {
+      font-weight: 700; font-size: 15px; color: #1a1a2e; margin-bottom: 2px;
+    }
+    .cf-post .cf-meta-line {
+      font-size: 11px; color: #b2bec3; line-height: 1.4;
+    }
+    .cf-post .cf-preview-text {
+      font-size: 12px; color: #999; line-height: 1.4;
+      overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
+      -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    }
+    .cf-write { flex-direction: column; gap: 8px; }
+    .cf-write .cf-write-row {
+      display: flex; gap: 8px; align-items: stretch; width: 100%;
+    }
+    .cf-write .cf-write-row input[type="text"] { flex: 1; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #d0d0e0; border-radius: 4px; }
+    /* ===== 로그인 페이지 ===== */
+    .login-overlay {
+      position: fixed; inset: 0; z-index: 5000;
+      background: linear-gradient(135deg, #667eea 0%, #6c5ce7 50%, #a29bfe 100%);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .login-overlay.hidden { display: none; }
+    .login-card {
+      background: #fff; border-radius: 24px; padding: 40px;
+      width: 90%; max-width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+      text-align: center;
+    }
+    .login-card .logo { font-size: 48px; margin-bottom: 8px; }
+    .login-card h1 { font-size: 24px; color: #1a1a2e; margin-bottom: 4px; }
+    .login-card .subtitle { font-size: 14px; color: #b2bec3; margin-bottom: 28px; }
+    .login-card .tab-bar {
+      display: flex; gap: 0; margin-bottom: 24px;
+      background: #f0f2f5; border-radius: 12px; padding: 4px;
+    }
+    .login-card .tab-btn {
+      flex: 1; padding: 10px; border: none; border-radius: 10px;
+      background: transparent; font-size: 14px; font-weight: 600; cursor: pointer;
+      color: #666; transition: 0.2s;
+    }
+    .login-card .tab-btn.active { background: #fff; color: #6c5ce7; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .login-card .login-input {
+      width: 100%; padding: 14px 16px; border: 2px solid #e0e0f0; border-radius: 12px;
+      font-size: 15px; outline: none; transition: 0.2s; margin-bottom: 12px;
+    }
+    .login-card .login-input:focus { border-color: #6c5ce7; }
+    .login-card .login-btn {
+      width: 100%; padding: 14px; border: none; border-radius: 12px;
+      background: #6c5ce7; color: #fff; font-size: 16px; font-weight: 700;
+      cursor: pointer; transition: 0.2s; margin-top: 4px;
+    }
+    .login-card .login-btn:hover { background: #5a4bd1; }
+    .login-card .login-btn:disabled { opacity: 0.5; cursor: default; }
+    .login-card .login-error {
+      color: #e74c3c; font-size: 13px; margin-top: 12px; min-height: 20px;
+    }
+    .login-card .login-success {
+      color: #27ae60; font-size: 13px; margin-top: 12px; min-height: 20px;
+    }
+    .find-account-link {
+      text-align: center; font-size: 12px; color: #6c5ce7; margin-top: 16px;
+      cursor: pointer; user-select: none;
+    }
+    .find-account-link:hover { text-decoration: underline; }
+    .user-badge {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 12px; border-radius: 20px; background: #f0edff;
+      font-size: 12px; font-weight: 600; color: #6c5ce7; cursor: pointer;
+      transition: 0.2s; border: none;
+    }
+    .user-badge:hover { background: #e0d8ff; }
+    @media (max-width: 1024px) {
+      .dashboard { grid-template-columns: 1fr; grid-template-rows: auto; }
+      .animal-selector, .community-panel, .cam-panel,
+      .map-panel, .info-panel, .bio-panel, .cal-panel { grid-column: 1; grid-row: auto; }
+      #map { height: 300px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="panel-overlay" id="panelOverlay"></div>
+
+  <!-- 로그인 오버레이 -->
+  <div class="login-overlay hidden" id="loginOverlay">
+    <div class="login-card">
+      <div class="logo">🐾</div>
+      <h1>펫케어 대시보드</h1>
+      <div class="subtitle">반려동물 케어를 위한 올인원 대시보드</div>
+      <div class="tab-bar">
+        <button class="tab-btn active" id="loginTab" onclick="switchAuthTab('login')">로그인</button>
+        <button class="tab-btn" id="registerTab" onclick="switchAuthTab('register')">회원가입</button>
+      </div>
+      <div id="authLoginForm">
+        <input type="text" class="login-input" id="loginId" placeholder="아이디" autocomplete="username" onkeydown="if(event.key==='Enter')handleLogin()" />
+        <input type="password" class="login-input" id="loginPw" placeholder="비밀번호" autocomplete="current-password" onkeydown="if(event.key==='Enter')handleLogin()" />
+        <button class="login-btn" id="loginBtn" onclick="handleLogin()">로그인</button>
+      </div>
+      <div id="authRegisterForm" style="display:none">
+        <input type="text" class="login-input" id="regId" placeholder="아이디 (영문/숫자 4~20자)" autocomplete="username" onkeydown="if(event.key==='Enter')handleRegister()" />
+        <input type="text" class="login-input" id="regNick" placeholder="닉네임 (커뮤니티에 표시)" autocomplete="nickname" onkeydown="if(event.key==='Enter')handleRegister()" />
+        <input type="password" class="login-input" id="regPw" placeholder="비밀번호 (4자 이상)" autocomplete="new-password" onkeydown="if(event.key==='Enter')handleRegister()" />
+        <input type="password" class="login-input" id="regPw2" placeholder="비밀번호 확인" autocomplete="new-password" onkeydown="if(event.key==='Enter')handleRegister()" />
+        <button class="login-btn" id="registerBtn" onclick="handleRegister()">회원가입</button>
+      </div>
+      <div class="login-error" id="loginMsg"></div>
+      <div class="find-account-link" onclick="openFindAccountModal()">🔍 아이디/비밀번호 찾기</div>
+    </div>
+  </div>
+
+  <!-- 동물 추가/수정 모달 -->
+  <div class="modal-overlay" id="addAnimalModal">
+    <div class="modal">
+      <h3 id="addModalTitle">🐾 새 동물 추가</h3>
+      <input type="hidden" id="editAnimalId" />
+      <input type="text" id="inputName" placeholder="이름" />
+      <select id="inputSpecies" onchange="if(this.value==='__manage__'){openSpeciesModal();this.value=this.dataset.prev||'강아지';}else{this.dataset.prev=this.value;}"></select>
+      <input type="number" id="inputAge" placeholder="나이" min="0" step="0.1" />
+      <input type="date" id="inputBirthday" />
+      <input type="number" id="inputWeight" placeholder="몸무게 (kg)" min="0" step="0.1" />
+      <label>📍 지도 위치</label>
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <button class="btn-secondary" onclick="setMyLocation()" style="flex:1;padding:7px;font-size:12px">📍 내 위치</button>
+        <button class="btn-secondary" onclick="setArduinoGps()" style="flex:1;padding:7px;font-size:12px">🛰️ 아두이노 GPS</button>
+      </div>
+      <div style="display:flex;gap:6px">
+        <input type="number" id="inputLat" placeholder="위도" step="any" style="flex:1" />
+        <input type="number" id="inputLng" placeholder="경도" step="any" style="flex:1" />
+      </div>
+      <div class="btn-group">
+        <button class="btn-secondary" onclick="closeAddModal()">취소</button>
+        <button class="btn-primary" id="addModalSubmitBtn" onclick="submitAnimalForm()">추가</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 캘린더 일정 편집 모달 -->
+  <div class="modal-overlay" id="eventEditModal">
+    <div class="modal">
+      <h3>📅 일정 편집</h3>
+      <input type="hidden" id="editEventId" />
+      <input type="hidden" id="editEventDate" />
+      <label>일정 내용</label>
+      <input type="text" id="editEventTitle" placeholder="일정 내용" />
+      <label>종류</label>
+      <select id="editEventType">
+        <option value="vet">🏥 병원</option>
+        <option value="med">💊 약</option>
+        <option value="walk">🐾 산책</option>
+        <option value="other">📌 기타</option>
+      </select>
+      <div class="btn-group">
+        <button class="btn-secondary" onclick="closeEventModal()">취소</button>
+        <button class="btn-danger" onclick="deleteCalendarEvent()">삭제</button>
+        <button class="btn-primary" onclick="saveCalendarEvent()">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 점 종류 관리 모달 -->
+  <div class="modal-overlay" id="dotTypeModal">
+    <div class="modal">
+      <h3>🔘 점 종류 관리</h3>
+      <div style="margin-bottom:12px;font-size:12px;color:#666;">캘린더 일정 글자에 키워드가 포함되면 해당 색깔 점이 표시됩니다.</div>
+      <div id="dotTypeList" style="margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="dotKeyword" placeholder="키워드 (예: 병원)" style="flex:1;padding:8px 12px;border:2px solid #e0e0f0;border-radius:10px;font-size:13px;outline:none" />
+        <input type="color" id="dotColor" value="#e74c3c" style="width:40px;height:40px;padding:2px;border:2px solid #e0e0f0;border-radius:8px;cursor:pointer" />
+        <button class="btn-primary" onclick="addDotType()" style="white-space:nowrap">추가</button>
+      </div>
+      <div class="btn-group" style="margin-top:16px">
+        <button class="btn-secondary" onclick="closeDotTypeModal()">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 종 관리 모달 -->
+  <div class="modal-overlay" id="speciesModal">
+    <div class="modal">
+      <h3>🐾 종 관리</h3>
+      <div style="margin-bottom:12px;font-size:12px;color:#666;">동물 종류를 추가/삭제할 수 있습니다. 이모지 또는 이미지를 등록 가능합니다.</div>
+      <div id="speciesList" style="margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="text" id="speciesName" placeholder="종 이름 (예: 토끼)" style="flex:1;min-width:80px;padding:8px 12px;border:2px solid #e0e0f0;border-radius:10px;font-size:13px;outline:none" />
+        <input type="text" id="speciesEmoji" placeholder="이모지" style="width:48px;padding:8px 4px;border:2px solid #e0e0f0;border-radius:10px;font-size:16px;outline:none;text-align:center" />
+        <button class="btn-secondary" onclick="document.getElementById('speciesImgInput').click()" style="padding:7px 10px;font-size:11px;white-space:nowrap">🖼️ 이미지</button>
+        <input type="file" id="speciesImgInput" accept="image/*" onchange="onSpeciesImg(event)" style="display:none" />
+        <button class="btn-primary" onclick="addSpecies()" style="white-space:nowrap">추가</button>
+      </div>
+      <div style="margin-top:6px;font-size:11px;color:#999">이모지 미입력 시 이름으로 자동 감지됩니다.</div>
+      <div class="btn-group" style="margin-top:16px">
+        <button class="btn-secondary" onclick="closeSpeciesModal()">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 계정 설정 모달 (Google 스타일) -->
+  <div class="modal-overlay" id="settingsModal">
+    <div class="modal" style="max-width:500px;padding:0;overflow:hidden;border-radius:20px">
+      <div style="position:sticky;top:0;background:#fff;z-index:10;display:flex;align-items:center;justify-content:space-between;padding:20px 24px 12px;border-bottom:1px solid #e8eaed">
+        <h3 style="margin:0;font-size:18px;color:#1a1a2e">계정 설정</h3>
+        <button class="btn-secondary" onclick="closeSettingsModal()" style="padding:6px 14px;font-size:13px">✕ 닫기</button>
+      </div>
+      <div style="padding:16px 24px 24px;max-height:70vh;overflow-y:auto">
+
+        <!-- 프로필 사진 + 이름 -->
+        <div class="set-avatar-wrap">
+          <div id="setAvatarDisplay" class="avatar-circle">👤</div>
+          <div class="set-name" id="setDisplayName">—</div>
+          <div class="set-id" id="setDisplayId">@—</div>
+          <div class="set-avatar-actions">
+            <button onclick="document.getElementById('setAvatarInput').click()">🖼️ 사진 변경</button>
+            <input type="file" id="setAvatarInput" accept="image/*" style="display:none" onchange="onAvatarSelected(event)" />
+            <button class="danger" onclick="deleteAvatar()">🗑️ 삭제</button>
+          </div>
+        </div>
+
+        <!-- 닉네임 -->
+        <div class="set-card">
+          <div class="sc-header"><span class="sc-icon">🔤</span> 닉네임</div>
+          <div class="sc-value" id="setCurrentNickname">—</div>
+          <div class="sc-input-wrap">
+            <input type="text" class="sc-input" id="setNickname" placeholder="새 닉네임" />
+          </div>
+          <div class="sc-btn-row">
+            <button class="sc-btn sc-btn-primary" onclick="saveNickname()">저장</button>
+          </div>
+        </div>
+
+        <!-- 아이디 변경 -->
+        <div class="set-card">
+          <div class="sc-header"><span class="sc-icon">🔑</span> 아이디</div>
+          <div class="sc-value" id="setCurrentId">—</div>
+          <div class="sc-input-wrap">
+            <input type="text" class="sc-input" id="setNewId" placeholder="새 아이디 (영문/숫자 4~20자)" />
+          </div>
+          <div class="sc-warn">⚠️ 아이디 변경 시 게시글 작성자 정보가 새 아이디로 갱신됩니다.</div>
+          <div class="sc-btn-row">
+            <button class="sc-btn sc-btn-primary" onclick="changeId()">변경</button>
+          </div>
+        </div>
+
+        <!-- 비밀번호 변경 -->
+        <div class="set-card">
+          <div class="sc-header"><span class="sc-icon">🔒</span> 비밀번호</div>
+          <div class="sc-input-wrap">
+            <input type="password" class="sc-input" id="setCurPw" placeholder="현재 비밀번호" />
+            <input type="password" class="sc-input" id="setNewPw" placeholder="새 비밀번호 (4자 이상)" />
+            <input type="password" class="sc-input" id="setNewPw2" placeholder="새 비밀번호 확인" />
+          </div>
+          <div class="sc-btn-row">
+            <button class="sc-btn sc-btn-primary" onclick="changePassword()">변경</button>
+          </div>
+        </div>
+
+        <!-- 계정 삭제 -->
+        <div class="set-card" style="border-color:#f5c6cb;background:#fffbfb">
+          <div class="sc-header" style="color:#e74c3c"><span class="sc-icon">⚠️</span> 계정 삭제</div>
+          <div class="sc-warn" style="color:#888;margin-bottom:8px">계정을 삭제하면 모든 데이터(동물 정보, 캘린더, 게시글)가 영구 삭제되며 복구할 수 없습니다.</div>
+          <div class="sc-input-wrap">
+            <input type="password" class="sc-input" id="setDeletePw" placeholder="비밀번호 입력" />
+          </div>
+          <div class="sc-btn-row">
+            <button class="sc-btn sc-btn-danger" onclick="deleteAccount()">계정 영구 삭제</button>
+          </div>
+        </div>
+
+        <div class="set-card" style="border-color:#e8eaed">
+          <div class="sc-header" style="color:#666"><span class="sc-icon">🚪</span> 로그아웃</div>
+          <div class="sc-btn-row">
+            <button class="sc-btn sc-btn-secondary" onclick="logoutUser()">로그아웃</button>
+          </div>
+        </div>
+
+        <div id="adminPanel" class="set-card" style="border-color:#6c5ce7;background:#faf9ff;display:none">
+          <div class="sc-header" style="color:#6c5ce7"><span class="sc-icon">🛡️</span> 관리자 패널</div>
+          <div style="font-size:12px;color:#888;margin-bottom:10px">전체 회원 목록 — 회원 강제 탈퇴 및 계정 삭제</div>
+          <div id="adminUserList"></div>
+        </div>
+
+        <div id="settingsMsg" class="settings-msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 아이디/비밀번호 찾기 모달 -->
+  <div class="modal-overlay" id="findAccountModal">
+    <div class="modal" style="max-width:400px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 style="margin:0;font-size:18px;color:#1a1a2e">🔍 아이디/비밀번호 찾기</h3>
+        <button class="btn-secondary" onclick="closeFindAccountModal()" style="padding:6px 14px;font-size:13px">✕</button>
+      </div>
+      <div class="tab-bar" style="margin-bottom:16px">
+        <button class="tab-btn active" id="findIdTab" onclick="switchFindTab('id')">아이디 찾기</button>
+        <button class="tab-btn" id="findPwTab" onclick="switchFindTab('pw')">비밀번호 재설정</button>
+      </div>
+
+      <!-- 아이디 찾기 -->
+      <div id="findIdForm">
+        <div style="font-size:12px;color:#666;margin-bottom:12px">닉네임 또는 등록된 반려동물 이름으로 아이디를 찾을 수 있습니다.</div>
+        <input type="text" class="login-input" id="findIdQuery" placeholder="닉네임 또는 펫 이름" onkeydown="if(event.key==='Enter')findId()" />
+        <button class="login-btn" onclick="findId()" style="margin-top:8px">아이디 찾기</button>
+        <div id="findIdResult" style="margin-top:12px;font-size:13px;color:#333;line-height:1.6"></div>
+      </div>
+
+      <!-- 비밀번호 재설정 -->
+      <div id="findPwForm" style="display:none">
+        <div style="font-size:12px;color:#666;margin-bottom:12px">아이디를 입력하면 비밀번호를 재설정할 수 있습니다.</div>
+        <input type="text" class="login-input" id="resetPwId" placeholder="아이디" onkeydown="if(event.key==='Enter')checkResetId()" />
+        <button class="login-btn" onclick="checkResetId()" style="margin-top:8px">확인</button>
+        <div id="resetPwSection" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid #e0e0f0">
+          <input type="password" class="login-input" id="resetNewPw" placeholder="새 비밀번호 (4자 이상)" autocomplete="new-password" onkeydown="if(event.key==='Enter')resetPassword()" />
+          <input type="password" class="login-input" id="resetNewPw2" placeholder="비밀번호 확인" autocomplete="new-password" onkeydown="if(event.key==='Enter')resetPassword()" />
+          <button class="login-btn" onclick="resetPassword()" style="margin-top:8px">비밀번호 변경</button>
+        </div>
+        <div id="findPwMsg" style="margin-top:12px;font-size:13px;color:#333;line-height:1.6"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 게시글 상세 모달 (DC Inside 스타일) -->
+  <div class="modal-overlay" id="postDetailModal">
+    <div class="modal" style="max-width:640px;padding:20px">
+      <div id="pdInner"></div>
+    </div>
+  </div>
+
+  <!-- 일정 추가 팝업 (더블클릭 시 셀 옆에 뜸) -->
+  <div id="schedulePopup" style="display:none;position:fixed;z-index:3000;background:#fff;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,0.15);padding:16px;width:220px;">
+    <div style="font-size:14px;font-weight:700;color:#6c5ce7;margin-bottom:10px">📅 일정 추가</div>
+    <input id="schedTitle" placeholder="제목 (예: 병원 가는 날)" style="width:100%;padding:9px 12px;border:2px solid #e0e0f0;border-radius:10px;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:6px" />
+    <input id="schedTime" type="time" style="width:100%;padding:9px 12px;border:2px solid #e0e0f0;border-radius:10px;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:6px" />
+    <input id="schedLocation" placeholder="위치" style="width:100%;padding:9px 12px;border:2px solid #e0e0f0;border-radius:10px;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:6px" />
+    <div style="display:flex;gap:6px;justify-content:flex-end">
+      <button class="btn-secondary" onclick="closeSchedulePopup()" style="padding:7px 14px;font-size:12px">취소</button>
+      <button class="btn-primary" onclick="saveSchedule()" style="padding:7px 14px;font-size:12px">저장</button>
+    </div>
+  </div>
+
+  <!-- 커뮤니티 풀페이지 -->
+  <div class="community-full" id="communityFull">
+    <div class="cf-header">
+      <h2>{커뮤니티}</h2>
+      <button onclick="closeCommunity()">✕ 닫기</button>
+    </div>
+    <div class="cf-body" id="cfBody">
+      <div class="cf-write">
+        <div class="cf-write-row">
+          <input type="text" id="cfTitle" placeholder="제목" />
+        </div>
+        <div class="cf-write-row">
+          <input type="text" id="cfInput" placeholder="내용을 입력하세요..." />
+          <button class="btn-search" onclick="postCommunity()">게시</button>
+          <button class="media-upload-btn" onclick="document.getElementById('cfMediaInput').click()" title="파일 첨부">+</button>
+          <input type="file" id="cfMediaInput" accept="image/*,video/*" multiple style="display:none" onchange="onPostMediaSelect(event)" />
+        </div>
+        <div class="media-preview" id="cfMediaPreview"></div>
+      </div>
+      <div id="cfPosts"></div>
+    </div>
+  </div>
+
+  <!-- 대시보드 -->
+  <div class="dashboard">
+
+    <!-- 왼쪽 위: 동물 선택 -->
+    <div class="panel animal-selector">
+      <div class="panel-header">
+        <span class="panel-title">🐶 내 동물들</span>
+        <div style="display:flex;gap:4px">
+          <button class="user-badge" id="userBadge" onclick="openSettingsModal()" title="계정 설정">👤 <span id="userName">user</span></button>
+        </div>
+      </div>
+      <div class="animal-list" id="animalList"></div>
+      <button class="btn-add-animal" onclick="openAddModal()">+ 새 동물 등록</button>
+    </div>
+
+    <!-- 왼쪽 중간: 커뮤니티 -->
+    <div class="panel community-panel" id="communityPanel">
+      <div class="panel-header">
+        <span class="panel-title">{커뮤니티}</span>
+        <button class="btn-expand" onclick="toggleExpand('communityPanel')">⛶</button>
+      </div>
+      <div class="community-preview" id="communityFeed"></div>
+    </div>
+
+    <!-- 왼쪽 아래: 동물 캠 -->
+    <div class="panel cam-panel" id="camPanel">
+      <div class="panel-header">
+        <span class="panel-title">{동물 캠}</span>
+        <button class="btn-expand" onclick="toggleExpand('camPanel')">⛶</button>
+      </div>
+      <div class="cam-view" id="camView">
+        <div class="cam-placeholder" id="camPlaceholder">
+          <div class="cam-icon">📷</div>
+          <div>홈캠 연결 대기 중</div>
+          <div style="font-size:12px;margin-top:4px;opacity:0.6;">WiFi 연결 시 자동 표시</div>
+        </div>
+        <video id="camVideo" autoplay playsinline muted style="display:none;"></video>
+        <img id="camImage" style="display:none;" alt="홈캠" />
+        <span class="cam-status" id="camStatus">● 연결 끊김</span>
+      </div>
+      <div style="margin-top:8px;display:flex;gap:6px;">
+        <button class="btn-search" style="flex:1;padding:6px;font-size:12px;" onclick="connectCam()">캠 연결</button>
+        <button class="btn-search" style="flex:1;padding:6px;font-size:12px;background:#e74c3c;" onclick="disconnectCam()">연결 끊기</button>
+      </div>
+    </div>
+
+    <!-- 중앙: 지도 -->
+    <div class="panel map-panel">
+      <div class="panel-header">
+        <span class="panel-title">📍 위치 지도</span>
+      </div>
+      <div id="map"></div>
+      <div class="map-controls">
+        <button class="map-btn" onclick="locateMe()">📍 내 위치</button>
+        <button class="map-btn" onclick="fitAllAnimals()">👥 모든 동물 보기</button>
+      </div>
+      <div class="animal-location-list" id="animalLocList"></div>
+      <div class="map-search-wrap">
+        <input type="text" id="mapSearchQuery" placeholder="동물병원, 산책공원, 애견카페..." onkeydown="if(event.key==='Enter')mapSearch()" />
+        <button onclick="mapSearch()">검색</button>
+      </div>
+      <div class="map-routes" id="mapRoutes">
+        <div class="mr-empty">🔍 장소를 검색하면 거리와 이동 시간을 확인할 수 있습니다.</div>
+      </div>
+    </div>
+
+    <!-- 오른쪽 위: 동물 정보 -->
+    <div class="panel info-panel right-panel" id="infoPanel">
+      <div class="panel-header">
+        <span class="panel-title">{동물 정보}</span>
+        <div>
+          <button class="btn-edit-info" onclick="openEditModal()">✏️ 수정</button>
+          <button class="btn-expand" onclick="toggleExpand('infoPanel')">⛶</button>
+        </div>
+      </div>
+      <div class="info-grid">
+        <div class="info-item"><div class="label">이름</div><div class="value" id="dispName">—</div></div>
+        <div class="info-item"><div class="label">종</div><div class="value" id="dispSpecies">—</div></div>
+        <div class="info-item"><div class="label">나이</div><div class="value" id="dispAge">—</div></div>
+        <div class="info-item"><div class="label">생일</div><div class="value" id="dispBirthday">—</div></div>
+        <div class="info-item"><div class="label">몸무게</div><div class="value" id="dispWeight">—</div></div>
+        <div class="info-item"><div class="label">위치</div><div class="value" id="dispLocation">—</div></div>
+      </div>
+    </div>
+
+    <!-- 오른쪽 중간: 생체 정보 -->
+    <div class="panel bio-panel right-panel" id="bioPanel">
+      <div class="panel-header">
+        <span class="panel-title">{생체 정보}</span>
+        <button class="btn-expand" onclick="toggleExpand('bioPanel')">⛶</button>
+      </div>
+      <div class="bio-grid">
+        <div class="bio-card"><div class="bio-icon heart-rate">❤️</div><div class="bio-value heart-rate" id="bioHeart">--</div><div class="bio-label">심장박동 (BPM)</div></div>
+        <div class="bio-card"><div class="bio-icon temp-rate">🌡️</div><div class="bio-value temp-rate" id="bioTemp">--</div><div class="bio-label">체온 (°C)</div></div>
+        <div class="bio-card"><div class="bio-icon steps-rate">👣</div><div class="bio-value steps-rate" id="bioSteps">--</div><div class="bio-label">오늘 걸음수</div><div class="bio-sub" id="bioCalories">0 kcal</div></div>
+        <div class="bio-card"><div class="bio-icon steps-rate">📊</div><div class="bio-value steps-rate" id="bioWalkTime">--</div><div class="bio-label">산책 시간</div><div class="bio-sub" id="bioWalkDist">0 km</div></div>
+      </div>
+    </div>
+
+    <!-- 오른쪽 아래: 순수 JS 캘린더 -->
+    <div class="panel cal-panel right-panel" id="calPanel">
+      <div class="panel-header">
+        <span class="panel-title">{캘린더}</span>
+        <button class="btn-expand" onclick="toggleExpand('calPanel')">⛶</button>
+      </div>
+      <div id="calendarRoot">
+        <div class="cal-wrap">
+          <div class="cal-header">
+            <span class="cal-title" id="calTitle"></span>
+            <div class="cal-nav">
+              <button id="calPrevBtn">&lt;</button>
+              <button id="calNextBtn">&gt;</button>
+            </div>
+          </div>
+          <div class="cal-days" id="calWeekdays"></div>
+          <div class="cal-grid" id="calGrid"></div>
+          <div class="cal-legend" id="calLegend"></div>
+          <div class="cal-walk-check" id="calWalkCheck"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="./security.js"></script>
+  <script>
+    // ============================================================
+    //  1. 상태
+    // ============================================================
+    const STATE = {
+      currentUser: null,
+      animals: [], selectedId: null,
+      map: null, mapMarkers: {}, myLocationMarker: null,
+      communityPosts: [],
+      calYear: 2026, calMonth: 6,
+      calEvents: {}, /* { animalId: { "2026-07-06": [{id, title, type}] } } */
+      calSteps: {}, /* { animalId: { "2026-07-06": steps } } */
+      calWalks: {}, /* { animalId: { "2026-07-06": true } } */
+      calEditing: null, calEditingDate: null,
+      arduinoGps: null, /* {lat, lng} from Arduino GPS */
+    };
+    let calEventIdCtr = 100;
+
+    // ============================================================
+    //  1.5. 인증 (SHA-256 해싱 + 세션 토큰)
+    // ============================================================
+    const AUTH_KEY = 'petcare_users';
+
+    function getUsers() {
+      try { return JSON.parse(localStorage.getItem(AUTH_KEY)) || {}; }
+      catch { return {}; }
+    }
+    function saveUsers(users) {
+      localStorage.setItem(AUTH_KEY, JSON.stringify(users));
+    }
+
+    function getUserStorageKey() {
+      const session = getSession();
+      return session ? 'petcare_data_' + session.username : null;
+    }
+
+    function checkAuth() {
+      // 이전 세션 포맷 마이그레이션 시도
+      migrateOldSession();
+
+      const session = getSession();
+      if (session) {
+        const users = getUsers();
+        if (users[session.username]) {
+          STATE.currentUser = session.username;
+          return true;
+        }
+        // 사용자 데이터가 없어도 세션은 유지 (재로그인 시 recovery 가능)
+        console.warn('Session exists but user data not found:', session.username);
+      }
+      STATE.currentUser = null;
+      return false;
+    }
+
+    function isAdmin(userId) {
+      if (!userId) return false;
+      const users = getUsers();
+      return !!(users[userId] && users[userId].isAdmin);
+    }
+
+    async function seedAdminAccount() {
+      const users = getUsers();
+      if (users['masteradmin11']) {
+        // 이미 존재하면 isAdmin 플래그만 보장
+        users['masteradmin11'].isAdmin = true;
+        saveUsers(users);
+        return;
+      }
+      const hashed = await createPasswordHash('ymgmaster9785*');
+      users['masteradmin11'] = {
+        password: hashed,
+        nickname: 'MasterAdmin',
+        avatar: null,
+        isAdmin: true,
+        createdAt: new Date().toISOString(),
+      };
+      saveUsers(users);
+      console.log('✅ Admin account seeded: masteradmin11');
+    }
+
+    function switchAuthTab(tab) {
+      document.getElementById('loginTab').className = 'tab-btn' + (tab === 'login' ? ' active' : '');
+      document.getElementById('registerTab').className = 'tab-btn' + (tab === 'register' ? ' active' : '');
+      document.getElementById('authLoginForm').style.display = tab === 'login' ? 'block' : 'none';
+      document.getElementById('authRegisterForm').style.display = tab === 'register' ? 'block' : 'none';
+    }
+
+    // ============================================================
+    //  아이디/비밀번호 찾기
+    // ============================================================
+    function openFindAccountModal() {
+      document.getElementById('findAccountModal').classList.add('active');
+      switchFindTab('id');
+    }
+    function closeFindAccountModal() {
+      document.getElementById('findAccountModal').classList.remove('active');
+    }
+    function switchFindTab(tab) {
+      document.getElementById('findIdTab').className = 'tab-btn' + (tab === 'id' ? ' active' : '');
+      document.getElementById('findPwTab').className = 'tab-btn' + (tab === 'pw' ? ' active' : '');
+      document.getElementById('findIdForm').style.display = tab === 'id' ? 'block' : 'none';
+      document.getElementById('findPwForm').style.display = tab === 'pw' ? 'block' : 'none';
+      document.getElementById('findIdResult').textContent = '';
+      document.getElementById('findPwMsg').textContent = '';
+      document.getElementById('resetPwSection').style.display = 'none';
+    }
+    function findId() {
+      const q = document.getElementById('findIdQuery').value.trim().toLowerCase();
+      if (!q) { document.getElementById('findIdResult').textContent = '닉네임 또는 펫 이름을 입력하세요.'; return; }
+      const users = getUsers();
+      const results = [];
+      for (const uid in users) {
+        const u = users[uid];
+        if ((u.nickname && u.nickname.toLowerCase().includes(q)) || uid.toLowerCase().includes(q)) {
+          results.push(uid);
+          continue;
+        }
+        // 펫 이름 검색
+        if (STATE.animals && STATE.animals.length) {
+          for (const a of STATE.animals) {
+            if (a.name && a.name.toLowerCase().includes(q)) { results.push(uid); break; }
+          }
+        }
+      }
+      const el = document.getElementById('findIdResult');
+      if (results.length === 0) {
+        el.textContent = '❌ 일치하는 계정을 찾을 수 없습니다.';
+      } else {
+        el.innerHTML = '<div style="font-weight:600;margin-bottom:6px;color:#6c5ce7">✓ ' + results.length + '개의 계정을 찾았습니다</div>' +
+          results.map(uid => '<div style="padding:6px 10px;background:#f8f9ff;border-radius:8px;margin-bottom:4px">👤 <strong>' + uid + '</strong>'
+            + (users[uid].nickname ? ' (' + users[uid].nickname + ')' : '') + '</div>').join('');
+      }
+    }
+    function checkResetId() {
+      const id = document.getElementById('resetPwId').value.trim();
+      const msg = document.getElementById('findPwMsg');
+      const users = getUsers();
+      if (!id) { msg.textContent = '아이디를 입력하세요.'; return; }
+      if (!users[id]) { msg.textContent = '❌ 존재하지 않는 아이디입니다.'; document.getElementById('resetPwSection').style.display = 'none'; return; }
+      msg.innerHTML = '✅ <strong>' + id + '</strong> 계정 확인됨. 새 비밀번호를 입력하세요.';
+      document.getElementById('resetPwSection').style.display = 'block';
+    }
+    async function resetPassword() {
+      const id = document.getElementById('resetPwId').value.trim();
+      const pw = document.getElementById('resetNewPw').value;
+      const pw2 = document.getElementById('resetNewPw2').value;
+      const msg = document.getElementById('findPwMsg');
+      const users = getUsers();
+      if (!users[id]) { msg.textContent = '❌ 아이디를 먼저 확인해주세요.'; return; }
+      if (pw.length < 4) { msg.textContent = '비밀번호는 4자 이상 입력하세요.'; return; }
+      if (pw !== pw2) { msg.textContent = '비밀번호가 일치하지 않습니다.'; return; }
+      const hashed = await createPasswordHash(pw);
+      users[id].password = hashed;
+      saveUsers(users);
+      msg.innerHTML = '✅ 비밀번호가 성공적으로 변경되었습니다. 로그인해주세요.';
+      document.getElementById('resetNewPw').value = '';
+      document.getElementById('resetNewPw2').value = '';
+      document.getElementById('resetPwSection').style.display = 'none';
+    }
+
+    async function handleLogin() {
+      const msg = document.getElementById('loginMsg');
+      msg.className = 'login-error';
+      const id = document.getElementById('loginId').value.trim();
+      const pw = document.getElementById('loginPw').value;
+      if (!id || !pw) { msg.textContent = '아이디와 비밀번호를 입력하세요.'; return; }
+      const users = getUsers();
+      if (!users[id]) { msg.textContent = '존재하지 않는 계정입니다.'; return; }
+
+      const result = await verifyPassword(users[id].password, pw);
+      if (!result.valid) { msg.textContent = '비밀번호가 틀렸습니다.'; return; }
+
+      // 마이그레이션 필요 시 SHA-256으로 업그레이드
+      if (result.needsMigration && result.newHash) {
+        users[id].password = result.newHash;
+        saveUsers(users);
+      }
+
+      // 세션 토큰 발급 (localStorage에 username 평문 저장 안 함)
+      saveSession(id);
+      STATE.currentUser = id;
+      msg.className = 'login-success';
+      msg.textContent = '로그인 성공! 잠시만 기다려주세요...';
+      document.getElementById('loginBtn').disabled = true;
+      setTimeout(startApp, 500);
+    }
+
+    function getDisplayName(userId) {
+      const id = userId || STATE.currentUser;
+      if (!id) return '';
+      const users = getUsers();
+      return (users[id] && users[id].nickname) || id;
+    }
+
+    async function handleRegister() {
+      const msg = document.getElementById('loginMsg');
+      msg.className = 'login-error';
+      const id = document.getElementById('regId').value.trim();
+      const nick = document.getElementById('regNick').value.trim() || id;
+      const pw = document.getElementById('regPw').value;
+      const pw2 = document.getElementById('regPw2').value;
+      if (!id || !pw) { msg.textContent = '모든 항목을 입력하세요.'; return; }
+      if (!/^[a-zA-Z0-9_]{4,20}$/.test(id)) { msg.textContent = '아이디는 영문/숫자 4~20자로 입력하세요.'; return; }
+      if (pw.length < 4) { msg.textContent = '비밀번호는 4자 이상 입력하세요.'; return; }
+      if (pw !== pw2) { msg.textContent = '비밀번호가 일치하지 않습니다.'; return; }
+      const users = getUsers();
+      if (users[id]) {
+        // 이미 있는 계정이면 비밀번호 검증 후 동일 사용자로 간주
+        const result = await verifyPassword(users[id].password, pw);
+        if (result.valid) {
+          // 비밀번호가 같으면 정보 업데이트 후 바로 로그인
+          if (nick) users[id].nickname = nick;
+          saveUsers(users);
+          saveSession(id);
+          STATE.currentUser = id;
+          msg.className = 'login-success';
+          msg.textContent = '✅ 기존 계정으로 로그인합니다...';
+          document.getElementById('loginBtn').disabled = true;
+          setTimeout(startApp, 500);
+          return;
+        }
+        msg.textContent = '이미 존재하는 아이디입니다. (비밀번호가 일치하지 않음)';
+        return;
+      }
+
+      const hashed = await createPasswordHash(pw);
+      users[id] = { password: hashed, nickname: nick, avatar: null, createdAt: new Date().toISOString() };
+      saveUsers(users);
+      document.getElementById('regId').value = '';
+      document.getElementById('regNick').value = '';
+      document.getElementById('regPw').value = '';
+      document.getElementById('regPw2').value = '';
+      // 로그인 탭으로 전환, 성공 메시지 유지
+      document.getElementById('loginTab').className = 'tab-btn active';
+      document.getElementById('registerTab').className = 'tab-btn';
+      document.getElementById('authLoginForm').style.display = 'block';
+      document.getElementById('authRegisterForm').style.display = 'none';
+      msg.className = 'login-success';
+      msg.textContent = '✅ 회원가입 성공! 로그인해주세요.';
+      document.getElementById('loginId').value = id;
+      document.getElementById('loginPw').focus();
+    }
+
+    function logoutUser() {
+      if (!confirm('로그아웃 하시겠습니까?')) return;
+      closeSettingsModal();
+      clearSession();
+      STATE.currentUser = null;
+      STATE.animals = [];
+      STATE.selectedId = null;
+      STATE.calEvents = {};
+      STATE.calSteps = {};
+      STATE.calWalks = {};
+      STATE.communityPosts = [];
+      STATE.bioData = null;
+      STATE.arduinoGps = null;
+      document.getElementById('loginOverlay').classList.remove('hidden');
+      document.getElementById('loginBtn').disabled = false;
+      document.getElementById('loginMsg').className = 'login-error';
+      document.getElementById('loginMsg').textContent = '';
+      document.getElementById('loginId').value = '';
+      document.getElementById('loginPw').value = '';
+      switchAuthTab('login');
+    }
+
+    // ============================================================
+    //  2. 동물
+    // ============================================================
+    function loadFromLocalStorage() {
+      const key = getUserStorageKey();
+      if (!key) return;
+      try {
+        // 항상 STATE 초기값 리셋 (저장 데이터가 없어도 깨끗한 상태 보장)
+        STATE.animals = [];
+        STATE.calEvents = {};
+        STATE.calSteps = {};
+        STATE.calWalks = {};
+        STATE.selectedId = null;
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          const data = JSON.parse(saved);
+          STATE.animals = data.animals || [];
+          STATE.calEvents = data.calEvents || {};
+          STATE.calSteps = data.calSteps || {};
+          STATE.calWalks = data.calWalks || {};
+          if (data.communityPosts) {
+            STATE.communityPosts = data.communityPosts;
+            // 관리자 공지글 내용 업데이트 (로컬에 오래된 데이터가 남은 경우)
+            if (STATE.communityPosts.length > 0 && STATE.communityPosts[0].author === 'masteradmin11') {
+              STATE.communityPosts[0].title = '[공지]';
+              STATE.communityPosts[0].content = '반려동물 커뮤니티에 오신 것을 환영합니다!\n\n건강하고 행복한 반려생활을 위한 정보를 공유해보세요.';
+            }
+          }
+          if (data.calEventIdCtr) calEventIdCtr = data.calEventIdCtr;
+          if (data.calKeywords) CAL_KEYWORDS = data.calKeywords;
+          if (data.customSpecies) CUSTOM_SPECIES = data.customSpecies;
+          if (STATE.animals.length > 0) STATE.selectedId = STATE.animals[0].id;
+          else STATE.selectedId = null;
+        }
+      } catch (e) { console.warn('localStorage load failed', e); }
+    }
+
+    function saveToLocalStorage() {
+      const key = getUserStorageKey();
+      if (!key) return;
+      try {
+        localStorage.setItem(key, JSON.stringify({
+          animals: STATE.animals,
+          calEvents: STATE.calEvents,
+          calSteps: STATE.calSteps,
+          calWalks: STATE.calWalks,
+          calEventIdCtr: calEventIdCtr,
+          calKeywords: CAL_KEYWORDS,
+          customSpecies: CUSTOM_SPECIES,
+          communityPosts: STATE.communityPosts,
+        }));
+      } catch (e) { console.warn('localStorage save failed', e); }
+    }
+
+    function loadDemoData() {
+      const now = new Date();
+      STATE.calYear = now.getFullYear();
+      STATE.calMonth = now.getMonth();
+      STATE.communityPosts = [
+        { author:'masteradmin11', title:'[공지]', content:'반려동물 커뮤니티에 오신 것을 환영합니다!\n\n건강하고 행복한 반려생활을 위한 정보를 공유해보세요.', time:'방금', likes:{count:0,users:{}}, comments:[] },
+      ];
+      loadFromLocalStorage();
+    }
+
+    function renderAnimalList() {
+      const list = document.getElementById('animalList');
+      list.innerHTML = '';
+      STATE.animals.forEach(a => {
+        const div = document.createElement('div');
+        div.className = `animal-item ${a.id===STATE.selectedId?'active':''}`;
+        div.innerHTML = '<span class="animal-name">'+a.name+'</span><span class="species-tag">'+speciesIconHtml(guessEmoji(a.species))+' '+a.species+'</span><button class="btn-delete" title="삭제">✕</button>';
+        div.onclick = e => { if(!e.target.classList.contains('btn-delete')) selectAnimal(a.id); };
+        div.querySelector('.btn-delete').onclick = e => { e.stopPropagation(); deleteAnimal(a.id); };
+        list.appendChild(div);
+      });
+      renderAnimalLocList();
+    }
+
+    function deleteAnimal(id) {
+      const a = STATE.animals.find(x => x.id===id);
+      if(!a || !confirm(`"${a.name}" 님을 삭제하시겠습니까?`)) return;
+      STATE.animals = STATE.animals.filter(x => x.id!==id);
+      delete STATE.calEvents[id]; delete STATE.calSteps[id];
+      if(STATE.selectedId===id) STATE.selectedId = STATE.animals.length ? STATE.animals[0].id : null;
+      renderAnimalList();
+      STATE.selectedId ? (updateInfoPanel(), updateBioPanel(), updateMapMarker(), renderCalendar()) : (clearInfoPanel(), clearMapMarkers());
+      saveToLocalStorage();
+    }
+
+    function selectAnimal(id) {
+      STATE.selectedId = id;
+      renderAnimalList(); updateInfoPanel(); updateBioPanel(); updateMapMarker(); renderCalendar();
+    }
+    function getSelectedAnimal() { return STATE.animals.find(a => a.id===STATE.selectedId); }
+    function updateInfoPanel() {
+      const a = getSelectedAnimal();
+      if(!a) return;
+      document.getElementById('dispName').textContent = a.name;
+      document.getElementById('dispSpecies').innerHTML = speciesIconHtml(guessEmoji(a.species))+' '+a.species;
+      document.getElementById('dispAge').textContent = a.age+'살';
+      document.getElementById('dispBirthday').textContent = a.birthday||'—';
+      document.getElementById('dispWeight').textContent = a.weight ? a.weight+'kg' : '—';
+      document.getElementById('dispLocation').textContent = a.lat.toFixed(4)+', '+a.lng.toFixed(4);
+    }
+    function clearInfoPanel() { ['dispName','dispSpecies','dispAge','dispBirthday','dispWeight','dispLocation'].forEach(id => document.getElementById(id).textContent='—'); }
+    function clearMapMarkers() { Object.values(STATE.mapMarkers).forEach(m => STATE.map.removeLayer(m)); STATE.mapMarkers = {}; }
+
+    function openEditModal() {
+      const a = getSelectedAnimal();
+      if(!a) { alert('선택된 동물 없음'); return; }
+      document.getElementById('addModalTitle').textContent = '✏️ '+a.name+' 정보 수정';
+      document.getElementById('addModalSubmitBtn').textContent = '저장';
+      document.getElementById('editAnimalId').value = a.id;
+      document.getElementById('inputName').value = a.name;
+      renderSpeciesSelect();
+      document.getElementById('inputSpecies').value = a.species;
+      document.getElementById('inputAge').value = a.age;
+      document.getElementById('inputBirthday').value = a.birthday||'';
+      document.getElementById('inputWeight').value = a.weight||'';
+      document.getElementById('inputLat').value = a.lat;
+      document.getElementById('inputLng').value = a.lng;
+      document.getElementById('addAnimalModal').classList.add('active');
+    }
+
+    function openAddModal() {
+      document.getElementById('addModalTitle').textContent = '🐾 새 동물 추가';
+      document.getElementById('addModalSubmitBtn').textContent = '추가';
+      document.getElementById('editAnimalId').value = '';
+      document.getElementById('inputName').value = '';
+      renderSpeciesSelect();
+      document.getElementById('inputSpecies').value = '강아지';
+      document.getElementById('inputAge').value = '';
+      document.getElementById('inputBirthday').value = '';
+      document.getElementById('inputWeight').value = '';
+      const cur = getSelectedAnimal();
+      document.getElementById('inputLat').value = cur ? cur.lat : (STATE.userLat||37.5665);
+      document.getElementById('inputLng').value = cur ? cur.lng : (STATE.userLng||126.9780);
+      document.getElementById('addAnimalModal').classList.add('active');
+    }
+    function closeAddModal() { document.getElementById('addAnimalModal').classList.remove('active'); }
+
+    function setMyLocation() {
+      if(!navigator.geolocation) { alert('GPS를 지원하지 않는 브라우저입니다.'); return; }
+      navigator.geolocation.getCurrentPosition(p => {
+        document.getElementById('inputLat').value = p.coords.latitude.toFixed(6);
+        document.getElementById('inputLng').value = p.coords.longitude.toFixed(6);
+      }, () => { alert('위치를 불러올 수 없습니다.'); }, {timeout:5000,enableHighAccuracy:true});
+    }
+    function setArduinoGps() {
+      if(!STATE.arduinoGps || !STATE.arduinoGps.lat || !STATE.arduinoGps.lng) {
+        alert('아두이노 GPS 데이터가 없습니다.\n먼저 아두이노를 연결해주세요.');
+        return;
+      }
+      document.getElementById('inputLat').value = STATE.arduinoGps.lat.toFixed(6);
+      document.getElementById('inputLng').value = STATE.arduinoGps.lng.toFixed(6);
+    }
+
+    function submitAnimalForm() {
+      const n = document.getElementById('inputName').value.trim();
+      if(!n) { alert('이름을 입력'); return; }
+      const editId = document.getElementById('editAnimalId').value;
+      const d = { name:n, species:document.getElementById('inputSpecies').value, age:parseFloat(document.getElementById('inputAge').value)||0, birthday:document.getElementById('inputBirthday').value||'', weight:parseFloat(document.getElementById('inputWeight').value)||0, lat:parseFloat(document.getElementById('inputLat').value)||37.5665, lng:parseFloat(document.getElementById('inputLng').value)||126.9780 };
+      if(editId) { const i = STATE.animals.findIndex(x => x.id===editId); if(i>=0) STATE.animals[i] = {...STATE.animals[i], ...d}; }
+      else { d.id = 'a'+Date.now(); STATE.animals.push(d); STATE.selectedId = d.id; }
+      renderAnimalList(); updateInfoPanel(); updateBioPanel(); updateMapMarker(); renderCalendar();
+      saveToLocalStorage();
+      closeAddModal();
+    }
+
+    // ============================================================
+    //  3. 생체
+    // ============================================================
+    function updateBioPanel() {
+      const hasArduino = STATE.bioData && (STATE.bioData.heartRate !== undefined || STATE.bioData.steps !== undefined);
+      if (!hasArduino) {
+        document.getElementById('bioHeart').textContent = '연결 필요';
+        document.getElementById('bioTemp').textContent = '연결 필요';
+        document.getElementById('bioSteps').textContent = '연결 필요';
+        document.getElementById('bioCalories').textContent = '연결 필요';
+        document.getElementById('bioWalkTime').textContent = '연결 필요';
+        document.getElementById('bioWalkDist').textContent = '연결 필요';
+        return;
+      }
+      const h = STATE.bioData.heartRate ?? Math.floor(70+Math.random()*40);
+      const t = STATE.bioData.temperature ?? (36.5+Math.random()*1.5).toFixed(1);
+      const s = STATE.bioData.steps ?? Math.floor(Math.random()*8000);
+      document.getElementById('bioHeart').textContent = h;
+      document.getElementById('bioTemp').textContent = t;
+      document.getElementById('bioSteps').textContent = s.toLocaleString();
+      document.getElementById('bioCalories').textContent = (s*0.04).toFixed(1)+' kcal';
+      document.getElementById('bioWalkTime').textContent = Math.floor(s/80)+'분';
+      document.getElementById('bioWalkDist').textContent = (s*0.0007).toFixed(2)+' km';
+    }
+    setInterval(updateBioPanel, 5000);
+
+    // ============================================================
+    //  4. 지도
+    // ============================================================
+    function initMap() {
+      STATE.map = L.map('map').setView([STATE.userLat||37.5665, STATE.userLng||126.9780], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(STATE.map);
+    }
+
+    function updateMapMarker() {
+      clearMapMarkers();
+      STATE.animals.forEach(a => {
+        STATE.mapMarkers[a.id] = L.marker([a.lat,a.lng]).addTo(STATE.map).bindPopup('<b>'+a.name+'</b><br>'+speciesIconHtml(guessEmoji(a.species))+' '+a.species+' · '+a.age+'살');
+      });
+      const s = getSelectedAnimal();
+      if(s) { STATE.map.setView([s.lat,s.lng], 14); if(STATE.mapMarkers[s.id]) STATE.mapMarkers[s.id].openPopup(); }
+      renderAnimalLocList();
+    }
+
+    function locateMe() {
+      if(!navigator.geolocation) { alert('위치정보 미지원'); return; }
+      navigator.geolocation.getCurrentPosition(pos => {
+        const {latitude,longitude} = pos.coords;
+        STATE.map.setView([latitude,longitude], 15);
+        if(STATE.myLocationMarker) STATE.map.removeLayer(STATE.myLocationMarker);
+        STATE.myLocationMarker = L.marker([latitude,longitude], { icon:L.divIcon({className:'', html:'<div style="background:#4ade80;width:20px;height:20px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3)"></div>', iconSize:[20,20], iconAnchor:[10,10]}) }).addTo(STATE.map).bindPopup('<b>📌 내 위치</b>');
+        STATE.userLat = latitude; STATE.userLng = longitude;
+      }, () => alert('위치 권한 필요'), {enableHighAccuracy:true});
+    }
+
+    function fitAllAnimals() {
+      if(!STATE.animals.length) return;
+      STATE.map.fitBounds(L.latLngBounds(STATE.animals.map(a => [a.lat,a.lng])), {padding:[40,40]});
+    }
+    function renderAnimalLocList() {
+      const c = document.getElementById('animalLocList'); c.innerHTML = '';
+      STATE.animals.forEach(a => {
+        const s = document.createElement('span'); s.className = 'animal-loc-item'; s.innerHTML = '📍 '+speciesIconHtml(guessEmoji(a.species))+' '+a.name;
+        s.onclick = () => { STATE.map.setView([a.lat,a.lng],15); if(STATE.mapMarkers[a.id]) STATE.mapMarkers[a.id].openPopup(); };
+        c.appendChild(s);
+      });
+    }
+
+    // ============================================================
+    //  5. 주변 검색 + 경로 (OSM Nominatim + OSRM)
+    // ============================================================
+    let _searchTransportMode = 'driving';
+    let _currentSearchResults = [];
+
+    function getSearchCenter() {
+      if (STATE.userLat && STATE.userLng) return { lat: STATE.userLat, lng: STATE.userLng };
+      return { lat: 37.5665, lng: 126.9780 };
+    }
+
+    function mapSearch() {
+      const q = document.getElementById('mapSearchQuery').value.trim();
+      if (!q) return;
+      const center = getSearchCenter();
+      const viewbox = (center.lng - 0.5) + ',' + (center.lat - 0.5) + ',' + (center.lng + 0.5) + ',' + (center.lat + 0.5);
+      _clearSearchMarkers();
+      document.getElementById('mapRoutes').innerHTML = '<div class="mr-empty">⏳ 검색 중...</div>';
+      _currentSearchResults = [];
+
+      fetch('https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(q) + '&format=json&limit=10&viewbox=' + viewbox + '&accept-language=ko')
+        .then(r => r.json())
+        .then(data => {
+          if (!data || !data.length) {
+            document.getElementById('mapRoutes').innerHTML = '<div class="mr-empty">❌ 검색 결과가 없습니다.</div>';
+            return;
+          }
+          _currentSearchResults = data;
+          renderSearchResults(data);
+          // place markers
+          data.forEach((place, i) => {
+            const lat = parseFloat(place.lat), lng = parseFloat(place.lon);
+            const marker = L.marker([lat, lng]).addTo(STATE.map)
+              .bindPopup('<b>' + escapeHtml(place.display_name.split(',')[0]) + '</b><br>' + escapeHtml(place.display_name.substring(0, 60)));
+            if (!STATE.searchMarkers) STATE.searchMarkers = [];
+            STATE.searchMarkers.push(marker);
+          });
+          if (data.length > 0) {
+            const first = data[0];
+            STATE.map.setView([parseFloat(first.lat), parseFloat(first.lon)], 15);
+          }
+          hideSearchSpinner();
+        })
+        .catch(() => {
+          document.getElementById('mapRoutes').innerHTML = '<div class="mr-empty">❌ 검색 중 오류가 발생했습니다.</div>';
+          hideSearchSpinner();
+        });
+      showSearchSpinner();
+    }
+
+    function showSearchSpinner() {
+      const container = document.getElementById('mapRoutes');
+      container.innerHTML = '<div class="mr-empty">⏳ 검색 중...</div>';
+    }
+    function hideSearchSpinner() {
+      // spinner removed by renderSearchResults
+    }
+
+    function _clearSearchMarkers() {
+      if (STATE.searchMarkers) {
+        STATE.searchMarkers.forEach(m => STATE.map.removeLayer(m));
+        STATE.searchMarkers = [];
+      }
+    }
+
+    function renderSearchResults(data) {
+      const container = document.getElementById('mapRoutes');
+      const center = getSearchCenter();
+      container.innerHTML = '';
+      if (!data || !data.length) { container.innerHTML = '<div class="mr-empty">❌ 결과 없음</div>'; return; }
+
+      // Mode selector
+      const modes = [
+        { id: 'driving', label: '🚗 차량' },
+        { id: 'walking', label: '🚶 도보' },
+        { id: 'cycling', label: '🚲 자전거' },
+        { id: 'transit', label: '🚌 대중교통' },
+      ];
+      const modeBar = document.createElement('div'); modeBar.className = 'mr-modes';
+      modes.forEach(m => {
+        const btn = document.createElement('button');
+        btn.textContent = m.label;
+        btn.className = (_searchTransportMode === m.id) ? 'active' : '';
+        btn.onclick = () => { _searchTransportMode = m.id; renderSearchResults(data); };
+        modeBar.appendChild(btn);
+      });
+      container.appendChild(modeBar);
+
+      data.forEach((place, i) => {
+        const lat = parseFloat(place.lat), lng = parseFloat(place.lon);
+        const name = place.display_name.split(',')[0];
+        const addr = place.display_name;
+
+        // 모드별 평균 속도 (km/min) — OSRM 실패 시 폴백용
+        const modeSpeed = {
+          walking: 0.075,   // 4.5 km/h
+          cycling: 0.233,   // 14 km/h
+          driving: 0.5,     // 30 km/h (시내)
+          transit: 0.25,    // 15 km/h (대중교통 평균)
+        };
+
+        // OSRM routing
+        const osrmProfile = (_searchTransportMode === 'transit') ? 'driving' : _searchTransportMode;
+        const url = 'https://router.project-osrm.org/route/v1/' + osrmProfile + '/' + center.lng + ',' + center.lat + ';' + lng + ',' + lat + '?overview=false';
+
+        fetch(url).then(r => r.json()).then(routeData => {
+          let distKm, timeMin;
+          if (routeData && routeData.code === 'Ok' && routeData.routes && routeData.routes[0]) {
+            distKm = routeData.routes[0].distance / 1000;
+            timeMin = routeData.routes[0].duration / 60;
+            // transit: driving 시간의 1.8배 (환승/대기 반영)
+            if (_searchTransportMode === 'transit') {
+              timeMin = timeMin * 1.8;
+            }
+          } else {
+            distKm = lineDistance(center.lat, center.lng, lat, lng);
+            timeMin = distKm / (modeSpeed[_searchTransportMode] || 0.5);
+          }
+          updateResultItem(i, name, addr, distKm, timeMin, lat, lng);
+        }).catch(() => {
+          const distKm = lineDistance(center.lat, center.lng, lat, lng);
+          const timeMin = distKm / (modeSpeed[_searchTransportMode] || 0.5);
+          updateResultItem(i, name, addr, distKm, timeMin, lat, lng);
+        });
+      });
+    }
+
+    function updateResultItem(idx, name, addr, distKm, timeMin, lat, lng) {
+      const container = document.getElementById('mapRoutes');
+      if (!container) return;
+      // remove existing item for this idx
+      const existing = container.querySelector('.mr-item[data-idx="' + idx + '"]');
+      if (existing) existing.remove();
+
+      const d = document.createElement('div'); d.className = 'mr-item'; d.setAttribute('data-idx', idx);
+      const distStr = distKm < 1 ? (distKm * 1000).toFixed(0) + 'm' : distKm.toFixed(1) + 'km';
+      const timeStr = timeMin >= 60 ? Math.floor(timeMin / 60) + '시간 ' + Math.floor(timeMin % 60) + '분' : Math.floor(timeMin) + '분';
+      d.innerHTML = '<div class="mr-icon">📍</div><div class="mr-info"><div class="mr-name">' + escapeHtml(name) + '</div><div class="mr-detail">' + escapeHtml(addr.substring(0, 50)) + '</div></div><div class="mr-dist">' + distStr + '<br><span style="font-size:11px;color:#888;font-weight:400">' + timeStr + '</span></div>';
+      d.onclick = () => { STATE.map.setView([lat, lng], 17); };
+      container.appendChild(d);
+    }
+
+    function lineDistance(lat1, lng1, lat2, lng2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    // ============================================================
+    //  5.5. 종 시스템 (자동 이모지 + 커스텀 종)
+    // ============================================================
+    const DEFAULT_SPECIES = [
+      { name: '강아지', emoji: '🐶' },
+      { name: '고양이', emoji: '🐱' },
+      { name: '조류', emoji: '🐦' },
+      { name: '기타', emoji: '🐾' },
+    ];
+    let CUSTOM_SPECIES = [];
+
+    const SPECIES_EMOJI = {
+      '강아지':'🐶','개':'🐶','dog':'🐶','puppy':'🐶','푸들':'🐶','포메':'🐶','리트리버':'🐶','허스키':'🐶','시바':'🐶','웰시':'🐶','닥스훈트':'🐶','말티즈':'🐶','치와와':'🐶','불독':'🐶','진돗개':'🐶',
+      '고양이':'🐱','cat':'🐱','kitty':'🐱','kitten':'🐱','냥이':'🐱','캣':'🐱','페르시안':'🐱','샴':'🐱','뱅갈':'🐱',
+      '조류':'🐦','bird':'🐦','새':'🐦','앵무새':'🦜','parrot':'🦜','참새':'🐦','비둘기':'🕊️',
+      '토끼':'🐰','rabbit':'🐰','bunny':'🐰',
+      '햄스터':'🐹','hamster':'🐹','기니피그':'🐹',
+      '거북이':'🐢','turtle':'🐢','tortoise':'🐢',
+      '물고기':'🐟','fish':'🐟','goldfish':'🐟','구피':'🐟','열대어':'🐠',
+      '뱀':'🐍','snake':'🐍','파이썬':'🐍',
+      '도마뱀':'🦎','lizard':'🦎','gecko':'🦎','카멜레온':'🦎',
+      '말':'🐴','horse':'🐴','조랑말':'🐴','포니':'🐴',
+      '소':'🐄','cow':'🐄','황소':'🐂',
+      '돼지':'🐷','pig':'🐷','미니피그':'🐷',
+      '양':'🐑','sheep':'🐑','염소':'🐐',
+      '원숭이':'🐒','monkey':'🐒',
+      '곰':'🐻','bear':'🐻','반달곰':'🐻',
+      '판다':'🐼','panda':'🐼',
+      '사자':'🦁','lion':'🦁',
+      '호랑이':'🐯','tiger':'🐯',
+      '여우':'🦊','fox':'🦊',
+      '다람쥐':'🐿️','squirrel':'🐿️','청설모':'🐿️',
+      '펭귄':'🐧','penguin':'🐧',
+      '고슴도치':'🦔','hedgehog':'🦔',
+      '거미':'🕷️','spider':'🕷️','타란튤라':'🕷️',
+      '족제비':'🦦','otter':'🦦','수달':'🦦',
+      '라쿤':'🦝','raccoon':'🦝',
+      '알파카':'🦙','alpaca':'🦙','라마':'🦙',
+      '기린':'🦒','giraffe':'🦒',
+      '코끼리':'🐘','elephant':'🐘',
+      '코알라':'🐨','koala':'🐨',
+      '캥거루':'🦘','kangaroo':'🦘',
+      '하마':'🦛','hippo':'🦛',
+      '코뿔소':'🦏','rhino':'🦏',
+      '박쥐':'🦇','bat':'🦇',
+      '독수리':'🦅','eagle':'🦅','매':'🦅',
+      '올빼미':'🦉','owl':'🦉','부엉이':'🦉',
+      '공룡':'🦕','dinosaur':'🦕',
+    };
+
+    function guessEmoji(name) {
+      const lower = name.toLowerCase();
+      // 커스텀 종 먼저 확인 (이미지 data URL 포함)
+      for (const cs of CUSTOM_SPECIES) {
+        if (cs.name.toLowerCase() === lower) return cs.emoji || '🐾';
+      }
+      for (const [key, emoji] of Object.entries(SPECIES_EMOJI)) {
+        if (lower.includes(key)) return emoji;
+      }
+      return '🐾';
+    }
+
+    /** 종 아이콘 HTML 렌더링 (data URL 이미지 or 텍스트 이모지) */
+    function speciesIconHtml(emoji) {
+      if (!emoji) return '🐾';
+      if (typeof emoji === 'string' && emoji.startsWith('data:')) return '<img src="'+emoji.replace(/"/g,'&quot;')+'" style="width:18px;height:18px;border-radius:4px;object-fit:cover;vertical-align:middle" />';
+      return emoji;
+    }
+
+    function getAllSpecies() {
+      const all = DEFAULT_SPECIES.map(s => ({...s}));
+      for (const cs of CUSTOM_SPECIES) {
+        if (!all.some(s => s.name === cs.name)) all.push({...cs});
+      }
+      return all;
+    }
+
+    function renderSpeciesSelect() {
+      const sel = document.getElementById('inputSpecies');
+      if (!sel) return;
+      const list = getAllSpecies();
+      sel.innerHTML = list.map(s => '<option value="'+s.name+'">'+(s.emoji&&s.emoji.startsWith('data:')?'🖼️':s.emoji||'🐾')+' '+s.name+'</option>').join('');
+      sel.innerHTML += '<option value="__manage__">⚙️ 종 관리...</option>';
+      if (!sel.dataset.prev) sel.dataset.prev = '강아지';
+    }
+
+    // ============================================================
+    //  6. 순수 JS 캘린더
+    // ============================================================
+    const CAL_WD = ['일','월','화','수','목','금','토'];
+    let CAL_KEYWORDS = [
+      { keyword: '병원', color: '#e74c3c' },
+      { keyword: '약', color: '#f39c12' },
+      { keyword: '산책', color: '#27ae60' },
+      { keyword: '미용', color: '#e056fd' },
+    ];
+
+    function matchKeyword(text) {
+      for (const k of CAL_KEYWORDS) {
+        if (text.includes(k.keyword)) return k.color;
+      }
+      return '#6c5ce7';
+    }
+
+    function getEvts(aid) {
+      if(!aid) return {};
+      STATE.calEvents[aid] = STATE.calEvents[aid] || {};
+      return STATE.calEvents[aid];
+    }
+    function getSteps(aid) {
+      if(!aid) return {};
+      STATE.calSteps[aid] = STATE.calSteps[aid] || {};
+      return STATE.calSteps[aid];
+    }
+
+    function renderCalendar() {
+      closeSchedulePopup();
+      const y = STATE.calYear, m = STATE.calMonth;
+      document.getElementById('calTitle').textContent = y+'.'+String(m+1).padStart(2,'0');
+      document.getElementById('calWeekdays').innerHTML = CAL_WD.map(d => `<div class="cal-weekday">${d}</div>`).join('');
+
+      const grid = document.getElementById('calGrid'); grid.innerHTML = '';
+      const fd = new Date(y,m,1).getDay();
+      const dim = new Date(y,m+1,0).getDate();
+      const dimPrev = new Date(y,m,0).getDate();
+      const todayStr = new Date().toISOString().split('T')[0];
+      const evts = getEvts(STATE.selectedId);
+
+      // 지난 달
+      for(let i=fd-1; i>=0; i--) grid.appendChild(calCell(y,m-1,dimPrev-i,true,todayStr,evts));
+      // 이번 달
+      for(let d=1; d<=dim; d++) grid.appendChild(calCell(y,m,d,false,todayStr,evts));
+      // 다음 달
+      const rem = (7-((fd+dim)%7))%7;
+      for(let d=1; d<=rem; d++) grid.appendChild(calCell(y,m+1,d,true,todayStr,evts));
+      renderLegend();
+      renderWalkCheck();
+    }
+
+    function renderLegend() {
+      const el = document.getElementById('calLegend');
+      if (!el) return;
+      let html = CAL_KEYWORDS.map(k =>
+        '<span><span class="dot" style="background:'+k.color+'"></span>'+k.keyword+'</span>'
+      ).join('');
+      html += '<span style="margin-left:auto;font-size:11px;color:#6c5ce7;cursor:pointer" onclick="openDotTypeModal()">⚙️ 점 관리</span>';
+      el.innerHTML = html;
+    }
+
+    function renderWalkCheck() {
+      const el = document.getElementById('calWalkCheck');
+      if (!el || !STATE.selectedId) { if (el) el.innerHTML = ''; return; }
+      const todayStr = new Date().toISOString().split('T')[0];
+      const walks = STATE.calWalks[STATE.selectedId] || {};
+      const walked = !!walks[todayStr];
+
+      el.innerHTML = '';
+      const icon = document.createElement('span'); icon.className = 'walk-icon'; icon.textContent = '🐾'; el.appendChild(icon);
+      const label = document.createElement('span'); label.className = 'walk-label'; label.textContent = '오늘 산책'; el.appendChild(label);
+      const btns = document.createElement('div'); btns.className = 'walk-btns';
+      const yesBtn = document.createElement('button'); yesBtn.textContent = '예'; yesBtn.className = walked ? 'active-yes' : ''; yesBtn.onclick = () => setWalkToday(true);
+      const noBtn = document.createElement('button'); noBtn.textContent = '아니오'; noBtn.className = walked === false ? 'active-no' : ''; noBtn.onclick = () => setWalkToday(false);
+      btns.appendChild(yesBtn); btns.appendChild(noBtn); el.appendChild(btns);
+      const streak = getWalkStreak();
+      if (streak > 0) {
+        const s = document.createElement('span'); s.className = 'walk-streak'; s.textContent = streak + '일 연속 🔥';
+        el.appendChild(s);
+      }
+    }
+
+    function setWalkToday(val) {
+      if (!STATE.selectedId) return;
+      if (!STATE.calWalks[STATE.selectedId]) STATE.calWalks[STATE.selectedId] = {};
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (val) {
+        STATE.calWalks[STATE.selectedId][todayStr] = true;
+      } else {
+        delete STATE.calWalks[STATE.selectedId][todayStr];
+      }
+      saveToLocalStorage();
+      renderCalendar();
+    }
+
+    function getWalkStreak() {
+      if (!STATE.selectedId) return 0;
+      const walks = STATE.calWalks[STATE.selectedId];
+      if (!walks) return 0;
+      let streak = 0;
+      const d = new Date();
+      while (true) {
+        const key = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+        if (walks[key]) { streak++; d.setDate(d.getDate() - 1); }
+        else break;
+      }
+      return streak;
+    }
+
+    function ds(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+    function calCell(y,m,day,isOther,todayStr,evts) {
+      const d = new Date(y,m,day);
+      const ds_ = ds(d);
+      const div = document.createElement('div');
+      div.className = 'cal-cell'+(isOther?' other-month':'')+(ds_===todayStr&&!isOther?' today':'');
+
+      const num = document.createElement('div'); num.className = 'cal-day-num'; num.textContent = day; div.appendChild(num);
+
+      // 이벤트 (점 + 제목 + 시간 + 위치)
+      const evtList = evts[ds_];
+      if(evtList && evtList.length) {
+        const maxShow = 2;
+        const shown = evtList.slice(0, maxShow);
+        for (const evt of shown) {
+          const row = document.createElement('div'); row.className = 'cal-event-row';
+          const titleRow = document.createElement('div'); titleRow.className = 'cal-event-title';
+          const dot = document.createElement('span'); dot.className = 'cal-event-dot';
+          dot.style.backgroundColor = matchKeyword(evt.title);
+          titleRow.appendChild(dot);
+          const txt = document.createElement('span'); txt.textContent = evt.title;
+          txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis'; txt.style.whiteSpace='nowrap';
+          titleRow.appendChild(txt);
+          row.appendChild(titleRow);
+          const metaParts = [];
+          if (evt.time) metaParts.push('🕐 '+evt.time);
+          if (evt.location) metaParts.push('📍 '+evt.location);
+          if (metaParts.length) {
+            const meta = document.createElement('div'); meta.className = 'cal-event-meta';
+            meta.textContent = metaParts.join(' · ');
+            row.appendChild(meta);
+          }
+          row.addEventListener('click', function(e2) { e2.stopPropagation(); openEventEditModal(evt, ds_); });
+          div.appendChild(row);
+        }
+        if (evtList.length > maxShow) {
+          const more = document.createElement('div'); more.className = 'cal-event-more';
+          more.textContent = '+' + (evtList.length - maxShow) + '건 더보기';
+          more.addEventListener('click', function(e2) { e2.stopPropagation(); alert('전체 일정 목록은 일정 편집에서 확인 가능합니다.'); });
+          div.appendChild(more);
+        }
+      }
+
+      // 산책 체크 (오늘 날짜에만 표시)
+      if (!isOther && ds_ === todayStr && STATE.selectedId) {
+        const walks = STATE.calWalks[STATE.selectedId];
+        if (walks && walks[ds_]) {
+          const wi = document.createElement('div'); wi.className = 'cal-walk-icon'; wi.textContent = '🐾';
+          div.appendChild(wi);
+        }
+      }
+
+      // 더블클릭 → 일정 추가 팝업 (빈 곳만)
+      div.addEventListener('dblclick', function(e) {
+        if(e.target.closest('.cal-event-row,.cal-event-more')) return;
+        if(!STATE.selectedId) return;
+        if(isOther) { STATE.calMonth=m; STATE.calYear=y; renderCalendar(); return; }
+        openSchedulePopup(e, ds_);
+      });
+
+      return div;
+    }
+
+    // 캘린더 네비게이션
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('calPrevBtn').onclick = () => { STATE.calMonth--; if(STATE.calMonth<0){STATE.calMonth=11;STATE.calYear--;} renderCalendar(); };
+      document.getElementById('calNextBtn').onclick = () => { STATE.calMonth++; if(STATE.calMonth>11){STATE.calMonth=0;STATE.calYear++;} renderCalendar(); };
+    });
+
+    // ============================================================
+    //  6.3. 일정 추가 팝업 (더블클릭)
+    // ============================================================
+    let schedDateStr = null;
+
+    function openSchedulePopup(e, ds_) {
+      closeSchedulePopup();
+      schedDateStr = ds_;
+      const popup = document.getElementById('schedulePopup');
+      const cell = e.currentTarget;
+      const rect = cell.getBoundingClientRect();
+      const pw = 220, ph = 260;
+      let left = rect.right + 6;
+      let top = rect.top;
+      if (left + pw > window.innerWidth - 8) { left = rect.left - pw - 6; }
+      if (left < 8) left = 8;
+      if (top + ph > window.innerHeight - 8) top = window.innerHeight - ph - 8;
+      if (top < 8) top = 8;
+      popup.style.left = left + 'px';
+      popup.style.top = top + 'px';
+      document.getElementById('schedTitle').value = '';
+      document.getElementById('schedTime').value = '';
+      document.getElementById('schedLocation').value = '';
+      popup.style.display = 'block';
+      document.getElementById('schedTitle').focus();
+    }
+
+    function saveSchedule() {
+      const title = document.getElementById('schedTitle').value.trim();
+      if (!title) { alert('제목을 입력하세요.'); return; }
+      const time = document.getElementById('schedTime').value;
+      const location = document.getElementById('schedLocation').value.trim();
+      const evts2 = getEvts(STATE.selectedId);
+      if (!evts2[schedDateStr]) evts2[schedDateStr] = [];
+      evts2[schedDateStr].push({id:'ce'+(calEventIdCtr++), title:title, time:time||'', location:location||'', type:'other'});
+      closeSchedulePopup();
+      renderCalendar();
+      saveToLocalStorage();
+    }
+
+    function closeSchedulePopup() {
+      const popup = document.getElementById('schedulePopup');
+      if (popup) popup.style.display = 'none';
+      schedDateStr = null;
+    }
+
+    // 외부 클릭 시 팝업 닫기
+    document.addEventListener('click', function(e) {
+      const popup = document.getElementById('schedulePopup');
+      if (!popup || popup.style.display === 'none') return;
+      if (!popup.contains(e.target)) closeSchedulePopup();
+    });
+
+    // 캘린더 일정 편집
+    function openEventEditModal(evt, ds) {
+      STATE.calEditing = evt; STATE.calEditingDate = ds;
+      document.getElementById('editEventId').value = evt.id;
+      document.getElementById('editEventDate').value = ds;
+      document.getElementById('editEventTitle').value = evt.title;
+      document.getElementById('editEventType').value = evt.type||'other';
+      document.getElementById('eventEditModal').classList.add('active');
+    }
+    function closeEventModal() { document.getElementById('eventEditModal').classList.remove('active'); STATE.calEditing=null; STATE.calEditingDate=null; }
+    function saveCalendarEvent() {
+      if(!STATE.calEditing) return;
+      const t = document.getElementById('editEventTitle').value.trim();
+      if(!t) { alert('내용 입력'); return; }
+      STATE.calEditing.title = t;
+      STATE.calEditing.type = document.getElementById('editEventType').value;
+      renderCalendar(); closeEventModal(); saveToLocalStorage();
+    }
+    function deleteCalendarEvent() {
+      if(!STATE.calEditing||!STATE.calEditingDate) return;
+      if(!confirm('삭제하시겠습니까?')) return;
+      const evts = getEvts(STATE.selectedId);
+      const d = STATE.calEditingDate;
+      if(evts[d]) { evts[d] = evts[d].filter(e => e.id!==STATE.calEditing.id); if(!evts[d].length) delete evts[d]; }
+      renderCalendar(); closeEventModal(); saveToLocalStorage();
+    }
+
+    // ============================================================
+    //  6.5. 점 종류 관리
+    // ============================================================
+    function openDotTypeModal() {
+      renderDotTypeList();
+      document.getElementById('dotKeyword').value = '';
+      document.getElementById('dotColor').value = '#e74c3c';
+      document.getElementById('dotTypeModal').classList.add('active');
+    }
+    function closeDotTypeModal() { document.getElementById('dotTypeModal').classList.remove('active'); }
+    function renderDotTypeList() {
+      const el = document.getElementById('dotTypeList');
+      if(!el) return;
+      if(!CAL_KEYWORDS.length) { el.innerHTML = '<div style="color:#999;padding:12px;text-align:center">등록된 키워드가 없습니다.</div>'; return; }
+      el.innerHTML = CAL_KEYWORDS.map((k,i) =>
+        '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;background:#f8f9ff;margin-bottom:4px">'+
+          '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:'+k.color+';flex-shrink:0"></span>'+
+          '<span style="flex:1;font-size:14px;font-weight:600">'+k.keyword+'</span>'+
+          '<input type="color" value="'+k.color+'" style="width:32px;height:32px;padding:1px;border:1px solid #e0e0f0;border-radius:6px;cursor:pointer" onchange="updateDotColor('+i+',this.value)" />'+
+          '<button class="btn-secondary" style="padding:4px 10px;font-size:11px" onclick="deleteDotType('+i+')">삭제</button>'+
+        '</div>'
+      ).join('');
+    }
+    function addDotType() {
+      const kw = document.getElementById('dotKeyword').value.trim();
+      if(!kw) { alert('키워드를 입력하세요.'); return; }
+      if(CAL_KEYWORDS.some(k => k.keyword === kw)) { alert('이미 존재하는 키워드입니다.'); return; }
+      const color = document.getElementById('dotColor').value;
+      CAL_KEYWORDS.push({ keyword: kw, color: color });
+      saveToLocalStorage();
+      renderDotTypeList();
+      renderLegend();
+      renderCalendar();
+      document.getElementById('dotKeyword').value = '';
+    }
+    function updateDotColor(idx, color) {
+      if(idx < 0 || idx >= CAL_KEYWORDS.length) return;
+      CAL_KEYWORDS[idx].color = color;
+      saveToLocalStorage();
+      renderLegend();
+      renderCalendar();
+    }
+    function deleteDotType(idx) {
+      if(idx < 0 || idx >= CAL_KEYWORDS.length) return;
+      if(!confirm('「'+CAL_KEYWORDS[idx].keyword+'」 키워드를 삭제하시겠습니까?')) return;
+      CAL_KEYWORDS.splice(idx, 1);
+      saveToLocalStorage();
+      renderDotTypeList();
+      renderLegend();
+      renderCalendar();
+    }
+
+    // ============================================================
+    //  6.7. 종 관리
+    // ============================================================
+    function openSpeciesModal() {
+      renderSpeciesList();
+      document.getElementById('speciesName').value = '';
+      document.getElementById('speciesEmoji').value = '';
+      document.getElementById('speciesModal').classList.add('active');
+    }
+    function closeSpeciesModal() { document.getElementById('speciesModal').classList.remove('active'); }
+    function renderSpeciesList() {
+      const el = document.getElementById('speciesList');
+      if(!el) return;
+      const list = getAllSpecies();
+      if(!list.length) { el.innerHTML = '<div style="color:#999;padding:12px;text-align:center">종이 없습니다.</div>'; return; }
+      el.innerHTML = list.map((s,i) => {
+        const isDefault = i < DEFAULT_SPECIES.length;
+        return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;background:#f8f9ff;margin-bottom:4px">'+
+          '<span style="font-size:18px;display:inline-flex;align-items:center">'+speciesIconHtml(s.emoji)+'</span>'+
+          '<span style="flex:1;font-size:14px;font-weight:600">'+s.name+'</span>'+
+          (isDefault ? '<span style="font-size:11px;color:#999">기본</span>' : '<button class="btn-secondary" style="padding:4px 10px;font-size:11px" onclick="deleteSpecies('+i+')">삭제</button>')+
+        '</div>';
+      }).join('');
+    }
+    function addSpecies() {
+      const name = document.getElementById('speciesName').value.trim();
+      if(!name) { alert('종 이름을 입력하세요.'); return; }
+      const list = getAllSpecies();
+      if(list.some(s => s.name === name)) { alert('이미 존재하는 종입니다.'); return; }
+      let emoji = document.getElementById('speciesEmoji').value.trim();
+      if(!emoji) emoji = guessEmoji(name);
+      CUSTOM_SPECIES.push({ name, emoji });
+      saveToLocalStorage();
+      renderSpeciesList();
+      renderSpeciesSelect();
+      document.getElementById('speciesName').value = '';
+      document.getElementById('speciesEmoji').value = '';
+      document.getElementById('speciesImgInput').value = '';
+    }
+
+    /** 이미지를 data URL로 읽어 이모지 입력칸에 설정 */
+    function onSpeciesImg(e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        document.getElementById('speciesEmoji').value = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function deleteSpecies(idx) {
+      if(idx < DEFAULT_SPECIES.length) return;
+      const ci = idx - DEFAULT_SPECIES.length;
+      if(ci < 0 || ci >= CUSTOM_SPECIES.length) return;
+      if(!confirm('「'+CUSTOM_SPECIES[ci].name+'」 종을 삭제하시겠습니까?')) return;
+      CUSTOM_SPECIES.splice(ci, 1);
+      saveToLocalStorage();
+      renderSpeciesList();
+      renderSpeciesSelect();
+    }
+
+    // ============================================================
+    //  7. 확대/축소
+    // ============================================================
+    function toggleExpand(id) {
+      const p = document.getElementById(id), o = document.getElementById('panelOverlay');
+      const ex = p.classList.toggle('expanded');
+      if(ex) { o.style.display='block'; const b=p.querySelector('.btn-expand'); if(b){b.textContent='✕';b.className='btn-collapse';b.onclick=()=>toggleExpand(id);} }
+      else { o.style.display='none'; const b=p.querySelector('.btn-collapse'); if(b){b.textContent='⛶';b.className='btn-expand';b.onclick=()=>toggleExpand(id);} }
+    }
+    document.getElementById('panelOverlay').onclick = () => { document.querySelectorAll('.panel.expanded').forEach(p => { if(p.id) toggleExpand(p.id); }); };
+
+    // ============================================================
+    //  8. 캠
+    // ============================================================
+    function connectCam() {
+      const v=document.getElementById('camVideo'), im=document.getElementById('camImage'), pl=document.getElementById('camPlaceholder'), st=document.getElementById('camStatus');
+      if(navigator.mediaDevices?.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({video:{width:320,height:240}}).then(s => { pl.style.display='none'; im.style.display='none'; v.style.display='block'; v.srcObject=s; st.textContent='● 실시간 스트리밍'; st.style.color='#4ade80'; }).catch(() => { pl.style.display='none'; v.style.display='none'; im.style.display='block'; im.src='https://placehold.co/480x360/1a1a2e/4ade80?text=ESP32-CAM'; st.textContent='● WiFi 캠'; st.style.color='#4ade80'; });
+      } else alert('카메라 미지원');
+    }
+    function disconnectCam() {
+      const v=document.getElementById('camVideo'), im=document.getElementById('camImage'), pl=document.getElementById('camPlaceholder'), st=document.getElementById('camStatus');
+      if(v.srcObject) { v.srcObject.getTracks().forEach(t=>t.stop()); v.srcObject=null; }
+      v.style.display='none'; im.style.display='none'; im.src=''; pl.style.display='block'; st.textContent='● 연결 끊김'; st.style.color='#ff6b6b';
+    }
+
+    // ============================================================
+    //  9. 커뮤니티
+    // ============================================================
+    function renderCommunityFeed() {
+      const f = document.getElementById('communityFeed'); f.innerHTML = '';
+      STATE.communityPosts.slice(0,3).forEach(p => {
+        migratePostFormat(p);
+        const d=document.createElement('div'); d.className='post-item';
+        const label = p.title ? p.title : p.content.substring(0,30)+'…';
+        d.textContent = label;
+        f.appendChild(d);
+      });
+      const m = document.createElement('div'); m.className='post-item'; m.style.cssText='color:#6c5ce7;font-weight:600;text-align:center;padding:12px;border:none;cursor:pointer;';
+      m.textContent='커뮤니티 더보기 →'; m.onclick=openCommunity; f.appendChild(m);
+    }
+    function openCommunity() { document.getElementById('communityFull').classList.add('active'); renderCommunityPosts(); document.body.style.overflow='hidden'; }
+    function closeCommunity() { document.getElementById('communityFull').classList.remove('active'); document.body.style.overflow=''; }
+
+    // 이전 likes 숫자 포맷을 객체 포맷으로 마이그레이션
+    function migratePostFormat(p) {
+      if (typeof p.likes === 'number') p.likes = { count: p.likes, users: {} };
+      if (!p.likes) p.likes = { count: 0, users: {} };
+      if (!p.likes.users) p.likes.users = {};
+      if (!p.comments) p.comments = [];
+      if (!p.media) p.media = [];
+      if (!p.title) p.title = '';
+      if (!p.views && p.views !== 0) p.views = 0;
+      return p;
+    }
+
+    function escapeHtml(text) {
+      const d = document.createElement('div');
+      d.textContent = text;
+      return d.innerHTML;
+    }
+
+    // ============================================================
+    //  9. 커뮤니티 — 포스트 렌더링 (DC Inside 스타일)
+    // ============================================================
+    function renderCommunityPosts() {
+      const c = document.getElementById('cfPosts'); c.innerHTML = '';
+      STATE.communityPosts.forEach((p,i) => {
+        migratePostFormat(p);
+        const d = document.createElement('div'); d.className = 'cf-post';
+        const displayName = getDisplayName(p.author);
+        const hasMedia = p.media && p.media.length > 0;
+        const firstMedia = hasMedia ? p.media[0] : null;
+        const isImg = firstMedia && firstMedia.type === 'image';
+
+        let html = '';
+        // 썸네일 (첫 번째 미디어)
+        if (firstMedia) {
+          html += '<div class="cf-thumb-wrap">';
+          if (isImg) html += '<img class="cf-thumb" src="'+escapeHtml(firstMedia.data)+'" alt="" />';
+          else html += '<video class="cf-thumb" src="'+escapeHtml(firstMedia.data)+'" muted preload="metadata"></video>';
+          html += '</div>';
+        }
+        // 제목
+        html += '<div class="cf-post-title">' + escapeHtml(p.title || '[공지]') + '</div>';
+        // 작성자 + 시간 + 조회수 (한 줄에)
+        const aa = _avatarHtml(p.author, 'xsmall', 'vertical-align:middle;margin-right:3px;display:inline-flex');
+        html += '<div class="cf-meta-line">' + aa + displayName + ' · ' + escapeHtml(p.time) + ' · 👁️' + (p.views||0) + '</div>';
+
+        d.innerHTML = html;
+        d.onclick = function() { openPostDetail(i); };
+        c.appendChild(d);
+      });
+    }
+
+    // ============================================================
+    //  9.1. 좋아요
+    // ============================================================
+    function toggleLike(idx) {
+      const p = STATE.communityPosts[idx];
+      if (!p) return;
+      migratePostFormat(p);
+      if (p.likes.users[STATE.currentUser]) {
+        delete p.likes.users[STATE.currentUser];
+        p.likes.count = Math.max(0, (p.likes.count || 0) - 1);
+      } else {
+        p.likes.users[STATE.currentUser] = true;
+        p.likes.count = (p.likes.count || 0) + 1;
+      }
+      renderCommunityPosts();
+      renderCommunityFeed();
+      // 상세 모달 열려있으면 업데이트
+      if (STATE._detailIdx !== null && STATE._detailIdx !== undefined) {
+        const btn = document.querySelector('#pdInner .pd-actions span:first-child');
+        if (btn) {
+          const likedByMe = p.likes.users && p.likes.users[STATE.currentUser];
+          btn.innerHTML = (likedByMe ? '❤️' : '🤍') + ' <span id="pdLikeCount">' + p.likes.count + '</span> 좋아요';
+        }
+      }
+      saveToLocalStorage();
+    }
+
+    // ============================================================
+    //  9.2. 댓글 (목록형)
+    // ============================================================
+    function toggleComments(idx) {
+      const section = document.getElementById('commentSection' + idx);
+      if (!section) return;
+      section.style.display = (section.style.display === 'block') ? 'none' : 'block';
+      if (section.style.display === 'block') renderComments(idx);
+    }
+
+    function renderComments(idx, containerId) {
+      const p = STATE.communityPosts[idx];
+      const section = document.getElementById(containerId || ('commentSection' + idx));
+      if (!p || !section) return;
+      if (!p.comments) p.comments = [];
+      if (STATE._cmtImg && STATE._cmtImg[idx] === undefined) STATE._cmtImg[idx] = null;
+      let html = '';
+      p.comments.forEach((c, ci) => {
+        const cAuthor = getDisplayName(c.author);
+        const caa = _avatarHtml(c.author, 'xsmall', 'vertical-align:middle;margin-right:3px;display:inline-flex');
+        html += '<div class="cmt-item"><div style="flex:1;min-width:0">';
+        html += '<span class="cmt-author">' + caa + cAuthor + '</span> <span class="cmt-time">' + escapeHtml(c.time) + '</span>';
+        html += '<div class="cmt-content">' + escapeHtml(c.content);
+        if (c.image) html += '<img src="' + escapeHtml(c.image) + '" alt="" />';
+        html += '</div></div>';
+        if (c.author === STATE.currentUser || isAdmin(STATE.currentUser)) html += '<button class="cmt-delete" onclick="deleteComment(' + idx + ',' + ci + ', \'' + (containerId || '') + '\')">✕</button>';
+        html += '</div>';
+      });
+      const pendingImg = STATE._cmtImg && STATE._cmtImg[idx];
+      html += '<div class="cmt-input-wrap">';
+      if (pendingImg) html += '<img src="' + pendingImg + '" class="cmt-img-preview" onclick="clearCmtImg(' + idx + ',\'' + (containerId || '') + '\')" title="이미지 제거" />';
+      html += '<input type="text" class="cmt-input" id="cmtInput' + idx + '" placeholder="댓글 작성..." onkeydown="if(event.key===\'Enter\')addComment(' + idx + ', \'' + (containerId || '') + '\')" />';
+      html += '<div class="cmt-btn-row">';
+      html += '<button class="btn-search" style="padding:8px 14px;font-size:12px;white-space:nowrap" onclick="addComment(' + idx + ', \'' + (containerId || '') + '\')">등록</button>';
+      html += '<button class="cmt-img-btn" onclick="pickCmtImg(' + idx + ',\'' + (containerId || '') + '\')" title="이미지 첨부">+</button>';
+      html += '<input type="file" accept="image/*" style="display:none" id="cmtImgInput' + idx + '" onchange="onCmtImgSelected(' + idx + ',\'' + (containerId || '') + '\',this)" />';
+      html += '</div></div>';
+      section.innerHTML = html;
+      const inp = document.getElementById('cmtInput' + idx);
+      if (inp) inp.focus();
+    }
+    function pickCmtImg(idx, containerId) {
+      document.getElementById('cmtImgInput' + idx).click();
+    }
+    function onCmtImgSelected(idx, containerId, input) {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      if (file.size > 2 * 1024 * 1024) { alert('2MB 이하 이미지만 가능합니다.'); input.value = ''; return; }
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        if (!STATE._cmtImg) STATE._cmtImg = {};
+        STATE._cmtImg[idx] = e.target.result;
+        renderComments(idx, containerId);
+      };
+      reader.readAsDataURL(file);
+      input.value = '';
+    }
+    function clearCmtImg(idx, containerId) {
+      if (STATE._cmtImg) STATE._cmtImg[idx] = null;
+      renderComments(idx, containerId);
+    }
+
+    function addComment(idx, containerId) {
+      const input = document.getElementById('cmtInput' + idx);
+      if (!input) return;
+      const text = input.value.trim();
+      if (!text) return;
+      const p = STATE.communityPosts[idx];
+      if (!p) return;
+      if (!p.comments) p.comments = [];
+      const cmtImg = STATE._cmtImg && STATE._cmtImg[idx];
+      p.comments.push({ author: STATE.currentUser, content: text, time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }), image: cmtImg || null });
+      input.value = '';
+      if (STATE._cmtImg) STATE._cmtImg[idx] = null;
+      renderComments(idx, containerId);
+      if (containerId) { // 상세 모달에서 호출
+        const cc = document.getElementById('commentCount' + idx);
+        if (cc) cc.textContent = p.comments.length;
+      }
+      renderCommunityPosts();
+      renderCommunityFeed();
+      saveToLocalStorage();
+    }
+
+    function deleteComment(postIdx, commentIdx, containerId) {
+      const p = STATE.communityPosts[postIdx];
+      if (!p || !p.comments) return;
+      if (p.comments[commentIdx].author !== STATE.currentUser && !isAdmin(STATE.currentUser)) return;
+      if (!confirm('댓글을 삭제하시겠습니까?')) return;
+      p.comments.splice(commentIdx, 1);
+      renderComments(postIdx, containerId);
+      if (containerId) {
+        const cc = document.getElementById('commentCount' + postIdx);
+        if (cc) cc.textContent = p.comments.length;
+      }
+      renderCommunityPosts();
+      renderCommunityFeed();
+      saveToLocalStorage();
+    }
+
+    function deleteCommunityPost(idx) {
+      if (idx < 0 || idx >= STATE.communityPosts.length) return;
+      if (STATE.communityPosts[idx].author !== STATE.currentUser && !isAdmin(STATE.currentUser)) return;
+      if (!confirm('이 글을 삭제하시겠습니까?')) return;
+      STATE.communityPosts.splice(idx, 1);
+      closePostDetail();
+      renderCommunityPosts();
+      renderCommunityFeed();
+      saveToLocalStorage();
+    }
+
+    // ============================================================
+    //  9.3. 미디어 업로드
+    // ============================================================
+    let pendingMedia = [];
+
+    function onPostMediaSelect(e) {
+      const files = e.target.files;
+      if (!files || !files.length) return;
+      for (const file of files) {
+        if (file.size > 5 * 1024 * 1024) { alert('5MB 이하 파일만 가능: ' + file.name); continue; }
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+          pendingMedia.push({ type: file.type.startsWith('video/') ? 'video' : 'image', data: ev.target.result, name: file.name });
+          renderMediaPreview();
+        };
+        reader.readAsDataURL(file);
+      }
+      e.target.value = '';
+    }
+
+    function renderMediaPreview() {
+      const container = document.getElementById('cfMediaPreview');
+      if (!container) return;
+      if (!pendingMedia.length) { container.innerHTML = ''; return; }
+      container.innerHTML = pendingMedia.map((m, i) => {
+        const tag = m.type === 'image' ? 'img' : 'video';
+        return '<div class="mp-item"><' + tag + ' src="' + escapeHtml(m.data) + '" ' + (m.type === 'video' ? 'muted' : '') + ' /><button class="mp-del" onclick="removePostMedia(' + i + ')">✕</button></div>';
+      }).join('');
+    }
+
+    function removePostMedia(idx) {
+      pendingMedia.splice(idx, 1);
+      renderMediaPreview();
+    }
+
+    function postCommunity() {
+      const title = document.getElementById('cfTitle').value.trim();
+      const content = document.getElementById('cfInput').value.trim();
+      if (!title && !content) return;
+      STATE.communityPosts.unshift({
+        author: STATE.currentUser,
+        title: title || '',
+        content: content || '(내용 없음)',
+        time: '방금',
+        views: 0,
+        likes: { count: 0, users: {} },
+        comments: [],
+        media: pendingMedia.length > 0 ? [...pendingMedia] : [],
+      });
+      document.getElementById('cfTitle').value = '';
+      document.getElementById('cfInput').value = '';
+      pendingMedia = [];
+      renderMediaPreview();
+      renderCommunityPosts();
+      renderCommunityFeed();
+      saveToLocalStorage();
+    }
+
+    // ============================================================
+    //  9.4. 게시글 상세보기 (DC Inside 스타일)
+    // ============================================================
+    function openPostDetail(idx) {
+      const p = STATE.communityPosts[idx];
+      if (!p) return;
+      migratePostFormat(p);
+      p.views = (p.views || 0) + 1;
+      renderCommunityPosts();
+      STATE._detailIdx = idx;
+      const container = document.getElementById('pdInner');
+      const displayName = getDisplayName(p.author);
+      const likedByMe = p.likes.users && p.likes.users[STATE.currentUser];
+      const heartIcon = likedByMe ? '❤️' : '🤍';
+
+      let html = '<div class="pd-header"><div class="pd-title-section">';
+      html += '<div class="pd-post-title">' + escapeHtml(p.title || '[공지]') + '</div>';
+      html += '<div class="pd-meta">' + _avatarHtml(p.author, 'xsmall', 'vertical-align:middle;margin-right:4px;display:inline-flex') + displayName + ' · ' + escapeHtml(p.time) + ' · 👁️' + p.views + '</div></div>';
+      html += '<button class="btn-secondary" onclick="closePostDetail()" style="padding:6px 14px;flex-shrink:0">✕</button></div>';
+
+      if (p.media && p.media.length > 0) {
+        html += '<div class="pd-media">';
+        p.media.forEach(m => {
+          if (m.type === 'image') html += '<img src="' + escapeHtml(m.data) + '" alt="" />';
+          else if (m.type === 'video') html += '<video src="' + escapeHtml(m.data) + '" controls style="max-width:100%;border-radius:12px;margin-bottom:8px"></video>';
+        });
+        html += '</div>';
+      }
+
+      html += '<div class="pd-body">' + escapeHtml(p.content) + '</div>';
+      html += '<div class="pd-actions">';
+      html += '<span onclick="pdToggleLike()">' + heartIcon + ' <span id="pdLikeCount">' + (p.likes.count || 0) + '</span> 좋아요</span>';
+      html += '<span onclick="pdToggleComments()">💬 댓글 <span id="pdCommentCount">' + (p.comments ? p.comments.length : 0) + '</span></span>';
+      if (p.author === STATE.currentUser) html += '<span style="color:#e74c3c;margin-left:auto" onclick="pdDeletePost()">삭제</span>';
+      else if (isAdmin(STATE.currentUser)) html += '<span style="color:#e74c3c;margin-left:auto" onclick="pdDeletePost()">🗑️ 삭제</span>';
+      html += '</div>';
+      html += '<div id="pdComments" class="pd-comments" style="display:block"></div>';
+
+      container.innerHTML = html;
+      document.getElementById('postDetailModal').classList.add('active');
+      pdRenderComments();
+    }
+
+    function closePostDetail() {
+      document.getElementById('postDetailModal').classList.remove('active');
+      STATE._detailIdx = null;
+    }
+
+    function pdToggleLike() {
+      if (STATE._detailIdx === null || STATE._detailIdx === undefined) return;
+      toggleLike(STATE._detailIdx);
+    }
+
+    function pdToggleComments() {
+      const container = document.getElementById('pdComments');
+      if (!container) return;
+      container.style.display = (container.style.display === 'none') ? 'block' : 'none';
+      if (container.style.display === 'block') pdRenderComments();
+    }
+
+    function pdRenderComments() {
+      const idx = STATE._detailIdx;
+      if (idx === null || idx === undefined) return;
+      renderComments(idx, 'pdComments');
+    }
+
+    function pdDeletePost() {
+      const idx = STATE._detailIdx;
+      if (idx === null || idx === undefined) return;
+      deleteCommunityPost(idx);
+    }
+
+    // ============================================================
+    //  9.5. 계정 설정
+    // ============================================================
+    function openSettingsModal() {
+      const user = getUsers()[STATE.currentUser];
+      if (!user) return;
+      document.getElementById('setNickname').value = '';
+      document.getElementById('setNewId').value = '';
+      document.getElementById('setCurPw').value = '';
+      document.getElementById('setNewPw').value = '';
+      document.getElementById('setNewPw2').value = '';
+      document.getElementById('setDeletePw').value = '';
+      document.getElementById('settingsMsg').textContent = '';
+      document.getElementById('settingsMsg').className = 'settings-msg';
+      // fill current values
+      const displayName = getDisplayName(STATE.currentUser);
+      document.getElementById('setDisplayName').textContent = displayName;
+      document.getElementById('setDisplayId').textContent = '@' + STATE.currentUser;
+      document.getElementById('setCurrentNickname').textContent = getNickname(STATE.currentUser) || '(없음)';
+      document.getElementById('setCurrentId').textContent = STATE.currentUser;
+      // avatar
+      _renderAvatar('setAvatarDisplay', STATE.currentUser, 72);
+      // admin panel
+      renderAdminPanel();
+      document.getElementById('settingsModal').classList.add('active');
+    }
+    function closeSettingsModal() { document.getElementById('settingsModal').classList.remove('active'); }
+
+    function renderAdminPanel() {
+      const panel = document.getElementById('adminPanel');
+      if (!panel) return;
+      if (!isAdmin(STATE.currentUser)) { panel.style.display = 'none'; return; }
+      panel.style.display = 'block';
+      const users = getUsers();
+      const list = document.getElementById('adminUserList');
+      let html = '';
+      for (const uid in users) {
+        const u = users[uid];
+        const isSelf = uid === STATE.currentUser;
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#fff;border-radius:10px;margin-bottom:6px;border:1px solid #eee">';
+        html += '<div style="flex:1;min-width:0"><strong>' + escapeHtml(uid) + '</strong>';
+        if (u.nickname) html += ' <span style="color:#888;font-size:12px">(' + escapeHtml(u.nickname) + ')</span>';
+        if (u.isAdmin) html += ' <span style="color:#6c5ce7;font-size:11px;font-weight:600">🛡️관리자</span>';
+        html += '<div style="font-size:11px;color:#aaa;margin-top:2px">가입: ' + (u.createdAt ? new Date(u.createdAt).toLocaleDateString('ko-KR') : '알 수 없음') + '</div>';
+        html += '</div>';
+        if (!isSelf) {
+          html += '<button class="btn-secondary" style="padding:5px 12px;font-size:11px;color:#e74c3c;border-color:#e74c3c" onclick="adminDeleteUser(\'' + escapeHtml(uid) + '\')">강제 탈퇴</button>';
+        } else {
+          html += '<span style="font-size:11px;color:#999">🔵 나</span>';
+        }
+        html += '</div>';
+      }
+      list.innerHTML = html;
+    }
+
+    function adminDeleteUser(userId) {
+      if (!isAdmin(STATE.currentUser)) return;
+      if (!confirm('"' + userId + '" 계정을 강제 탈퇴시키시겠습니까?\n\n이 사용자의 모든 데이터가 영구 삭제됩니다.')) return;
+      if (!confirm('정말로 "' + userId + '" 계정을 삭제하시겠습니까? 되돌릴 수 없습니다.')) return;
+      const users = getUsers();
+      delete users[userId];
+      saveUsers(users);
+      // 유저 데이터도 삭제
+      try { localStorage.removeItem('petcare_data_' + userId); } catch {}
+      renderAdminPanel();
+      alert('✅ "' + userId + '" 계정이 삭제되었습니다.');
+    }
+
+    function _setSettingsMsg(text, isError) {
+      const el = document.getElementById('settingsMsg');
+      el.textContent = text;
+      el.className = 'settings-msg ' + (isError ? 'error' : 'success');
+    }
+
+    // ============================================================
+    //  아바타 (프로필 사진)
+    // ============================================================
+    function getAvatar(userId) {
+      if (!userId) return null;
+      const users = getUsers();
+      return users[userId] && users[userId].avatar ? users[userId].avatar : null;
+    }
+    function getNickname(userId) {
+      if (!userId) return null;
+      const users = getUsers();
+      return users[userId] && users[userId].nickname ? users[userId].nickname : null;
+    }
+    function _avatarHtml(userId, sizeClass, inlineStyle) {
+      const url = getAvatar(userId);
+      if (url) return '<img class="avatar-circle ' + (sizeClass||'') + '" src="' + url + '" alt=""' + (inlineStyle?' style="'+inlineStyle+'"':'') + ' />';
+      const name = getNickname(userId) || userId;
+      const ch = name.charAt(0).toUpperCase();
+      return '<span class="avatar-circle ' + (sizeClass||'') + '" style="background:#e0d8ff;color:#6c5ce7;font-weight:700' + (inlineStyle?';'+inlineStyle:'') + '">' + escapeHtml(ch) + '</span>';
+    }
+    function _renderAvatar(containerId, userId, size) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      const url = getAvatar(userId);
+      if (url) {
+        el.innerHTML = '<img class="avatar-circle" src="' + url + '" style="width:' + size + 'px;height:' + size + 'px;font-size:' + (size/3) + 'px" />';
+      } else {
+        const name = getNickname(userId) || userId;
+        const ch = name.charAt(0).toUpperCase();
+        el.innerHTML = '<span class="avatar-circle" style="width:' + size + 'px;height:' + size + 'px;font-size:' + (size/3) + 'px;background:#e0d8ff;color:#6c5ce7;font-weight:700">' + escapeHtml(ch) + '</span>';
+      }
+    }
+    function resizeAvatar(file, maxSize) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const img = new Image();
+          img.onload = function() {
+            const canvas = document.createElement('canvas');
+            let w = img.width, h = img.height;
+            if (w > maxSize || h > maxSize) {
+              if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
+              else { w = Math.round(w * maxSize / h); h = maxSize; }
+            }
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/jpeg', 0.8));
+          };
+          img.onerror = reject;
+          img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+    function onAvatarSelected(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      if (file.size > 2 * 1024 * 1024) { _setSettingsMsg('2MB 이하의 이미지만 업로드 가능합니다.', true); return; }
+      resizeAvatar(file, 200).then(dataUrl => {
+        _saveAvatarToUser(STATE.currentUser, dataUrl);
+        _setSettingsMsg('✅ 프로필 사진이 변경되었습니다.', false);
+        _updateAllAvatars();
+      }).catch(() => {
+        _setSettingsMsg('이미지 처리 중 오류가 발생했습니다.', true);
+      });
+    }
+    function _saveAvatarToUser(userId, dataUrl) {
+      const users = getUsers();
+      users[userId].avatar = dataUrl;
+      saveUsers(users);
+    }
+    function deleteAvatar() {
+      if (!confirm('프로필 사진을 삭제하시겠습니까?')) return;
+      _saveAvatarToUser(STATE.currentUser, null);
+      _setSettingsMsg('✅ 프로필 사진이 삭제되었습니다.', false);
+      _updateAllAvatars();
+    }
+    function _updateAllAvatars() {
+      _renderAvatar('setAvatarDisplay', STATE.currentUser, 72);
+      _renderUserBadgeAvatar();
+      renderCommunityPosts();
+      renderCommunityFeed();
+      const detailIdx = STATE._detailIdx;
+      if (detailIdx !== null && detailIdx !== undefined && document.getElementById('pdInner')) {
+        openPostDetail(detailIdx);
+      }
+    }
+    function _renderUserBadgeAvatar() {
+      const badge = document.getElementById('userBadge');
+      if (!badge) return;
+      const url = getAvatar(STATE.currentUser);
+      const adminTag = isAdmin(STATE.currentUser) ? ' 🛡️' : '';
+      if (url) {
+        badge.innerHTML = '<img class="user-badge-avatar" src="' + url + '" alt="" /> <span id="userName">' + escapeHtml(getDisplayName(STATE.currentUser)) + adminTag + '</span>';
+      } else {
+        const name = getNickname(STATE.currentUser) || STATE.currentUser;
+        const ch = name.charAt(0).toUpperCase();
+        badge.innerHTML = '<span class="user-badge-avatar" style="display:inline-flex;align-items:center;justify-content:center;background:#e0d8ff;color:#6c5ce7;font-weight:700;font-size:12px">' + escapeHtml(ch) + '</span> <span id="userName">' + escapeHtml(getDisplayName(STATE.currentUser)) + adminTag + '</span>';
+      }
+    }
+
+    function saveNickname() {
+      const nick = document.getElementById('setNickname').value.trim();
+      if (!nick) { _setSettingsMsg('닉네임을 입력하세요.', true); return; }
+      const users = getUsers();
+      users[STATE.currentUser].nickname = nick;
+      saveUsers(users);
+      document.getElementById('setCurrentNickname').textContent = nick;
+      document.getElementById('setDisplayName').textContent = getDisplayName(STATE.currentUser);
+      _renderUserBadgeAvatar();
+      renderCommunityPosts();
+      renderCommunityFeed();
+      _setSettingsMsg('✅ 닉네임이 변경되었습니다.', false);
+    }
+
+    async function changeId() {
+      const newId = document.getElementById('setNewId').value.trim();
+      if (!newId) { _setSettingsMsg('새 아이디를 입력하세요.', true); return; }
+      if (!/^[a-zA-Z0-9_]{4,20}$/.test(newId)) { _setSettingsMsg('영문/숫자 4~20자로 입력하세요.', true); return; }
+      const users = getUsers();
+      if (users[newId]) { _setSettingsMsg('이미 존재하는 아이디입니다.', true); return; }
+      const oldId = STATE.currentUser;
+      const oldData = users[oldId];
+      // 데이터 키 마이그레이션
+      try {
+        const saved = localStorage.getItem('petcare_data_' + oldId);
+        if (saved) { localStorage.setItem('petcare_data_' + newId, saved); localStorage.removeItem('petcare_data_' + oldId); }
+      } catch (e) { console.warn('Data migration failed', e); }
+      delete users[oldId];
+      users[newId] = oldData;
+      saveUsers(users);
+      STATE.currentUser = newId;
+      saveSession(newId);
+      document.getElementById('setCurrentId').textContent = newId;
+      document.getElementById('setDisplayId').textContent = '@' + newId;
+      _renderUserBadgeAvatar();
+      document.getElementById('setNewId').value = '';
+      renderCommunityPosts();
+      _setSettingsMsg('✅ 아이디가 변경되었습니다. (새 ID: ' + newId + ')', false);
+    }
+
+    async function changePassword() {
+      const cur = document.getElementById('setCurPw').value;
+      const newPw = document.getElementById('setNewPw').value;
+      const newPw2 = document.getElementById('setNewPw2').value;
+      if (!cur || !newPw) { _setSettingsMsg('모든 항목을 입력하세요.', true); return; }
+      if (newPw.length < 4) { _setSettingsMsg('새 비밀번호는 4자 이상 입력하세요.', true); return; }
+      if (newPw !== newPw2) { _setSettingsMsg('새 비밀번호가 일치하지 않습니다.', true); return; }
+      const users = getUsers();
+      const result = await verifyPassword(users[STATE.currentUser].password, cur);
+      if (!result.valid) { _setSettingsMsg('현재 비밀번호가 틀렸습니다.', true); return; }
+      users[STATE.currentUser].password = await createPasswordHash(newPw);
+      saveUsers(users);
+      document.getElementById('setCurPw').value = '';
+      document.getElementById('setNewPw').value = '';
+      document.getElementById('setNewPw2').value = '';
+      _setSettingsMsg('✅ 비밀번호가 변경되었습니다.', false);
+    }
+
+    async function deleteAccount() {
+      const pw = document.getElementById('setDeletePw').value;
+      if (!pw) { _setSettingsMsg('비밀번호를 입력하세요.', true); return; }
+      if (!confirm('⚠️ 정말 계정을 영구 삭제하시겠습니까?\n되돌릴 수 없습니다!')) return;
+      const users = getUsers();
+      const result = await verifyPassword(users[STATE.currentUser].password, pw);
+      if (!result.valid) { _setSettingsMsg('비밀번호가 틀렸습니다.', true); return; }
+      try { localStorage.removeItem('petcare_data_' + STATE.currentUser); } catch {}
+      delete users[STATE.currentUser];
+      saveUsers(users);
+      closeSettingsModal();
+      clearSession();
+      STATE.currentUser = null;
+      STATE.animals = [];
+      STATE.selectedId = null;
+      STATE.calEvents = {};
+      STATE.calSteps = {};
+      STATE.calWalks = {};
+      STATE.communityPosts = [];
+      STATE.bioData = null;
+      STATE.arduinoGps = null;
+      document.getElementById('loginOverlay').classList.remove('hidden');
+      document.getElementById('loginBtn').disabled = false;
+      document.getElementById('loginMsg').className = 'login-error';
+      document.getElementById('loginMsg').textContent = '✅ 계정이 삭제되었습니다.';
+      document.getElementById('loginId').value = '';
+      document.getElementById('loginPw').value = '';
+      switchAuthTab('login');
+    }
+
+    // ============================================================
+    //  10. 아두이노
+    // ============================================================
+    async function connectArduino() {
+      if(!navigator.serial) { alert('WebSerial 필요 (Chrome/Edge)'); return; }
+      try {
+        const port = await navigator.serial.requestPort();
+        await port.open({baudRate:115200});
+        const reader = port.readable.getReader();
+        alert('아두이노 연결 성공');
+        const dec = new TextDecoder();
+        while(true) { const {value,done} = await reader.read(); if(done) break; const p=dec.decode(value).trim().split(','); const d={}; p.forEach(x=>{const[k,v]=x.split(':'); if(k==='HR')d.heartRate=parseInt(v); if(k==='TEMP')d.temperature=parseFloat(v); if(k==='STEPS')d.steps=parseInt(v); if(k==='LAT')STATE.arduinoGps={...STATE.arduinoGps,lat:parseFloat(v)}; if(k==='LNG')STATE.arduinoGps={...STATE.arduinoGps,lng:parseFloat(v)}; }); if(Object.keys(d).length){STATE.bioData=d;updateBioPanel();} }
+      } catch(e) { console.error(e); }
+    }
+
+    // ============================================================
+    //  11. 위치 + 초기화
+    // ============================================================
+    function getUserLocation() {
+      return new Promise(r => {
+        if(!navigator.geolocation) return r({lat:37.5665,lng:126.9780});
+        navigator.geolocation.getCurrentPosition(p => { STATE.userLat=p.coords.latitude; STATE.userLng=p.coords.longitude; r({lat:STATE.userLat,lng:STATE.userLng}); }, () => r({lat:37.5665,lng:126.9780}), {timeout:5000,enableHighAccuracy:true});
+      });
+    }
+
+    async function startApp() {
+      document.getElementById('loginOverlay').classList.add('hidden');
+      await seedAdminAccount();
+      _renderUserBadgeAvatar();
+      getUserLocation().then(() => {
+        loadDemoData();
+        renderAnimalList();
+        initMap();
+        if (STATE.selectedId) { updateInfoPanel(); updateMapMarker(); }
+        else { clearInfoPanel(); }
+        updateBioPanel();
+        renderCommunityFeed();
+        renderCalendar();
+      });
+      const fb = document.createElement('script'); fb.src='./firebase-config.js'; fb.onload=()=>console.log('FB'); fb.onerror=()=>console.log('Local'); document.head.appendChild(fb);
+      console.log('✅ ' + STATE.currentUser + ' 초기화 완료');
+    }
+
+    async function init() {
+      await seedAdminAccount();
+      if (checkAuth()) {
+        startApp();
+      } else {
+        document.getElementById('loginOverlay').classList.remove('hidden');
+        document.getElementById('loginBtn').disabled = false;
+      }
+    }
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+
+</body>
+</html>
